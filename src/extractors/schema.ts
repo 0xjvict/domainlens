@@ -1,14 +1,35 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pg from 'pg';
-import type { DomainLensConfig, SchemaCache, TableInfo, EnumType } from '../types.js';
+import type { DbType, DomainLensConfig, SchemaCache, TableInfo, EnumType } from '../types.js';
 
 const { Client } = pg;
+
+function inferDbType(config: DomainLensConfig): DbType {
+  if (config.db_type) return config.db_type;
+
+  const dbUrl = process.env[config.db_url_env];
+  if (!dbUrl) return 'postgres';
+
+  try {
+    const protocol = new URL(dbUrl).protocol;
+    if (protocol.startsWith('mysql')) return 'mysql';
+  } catch {
+    // invalid URL — fall through to default
+  }
+  return 'postgres';
+}
 
 export async function extractSchema(
   config: DomainLensConfig,
   projectPath: string = process.cwd()
 ): Promise<SchemaCache | null> {
+  const dbType = inferDbType(config);
+
+  if (dbType === 'mysql') {
+    return extractSchemaMysql(config, projectPath);
+  }
+
   const dbUrl = process.env[config.db_url_env];
 
   if (!dbUrl) {
@@ -47,6 +68,15 @@ export async function extractSchema(
   } finally {
     await client.end();
   }
+}
+
+async function extractSchemaMysql(
+  config: DomainLensConfig,
+  projectPath: string
+): Promise<SchemaCache | null> {
+  // Stub: MySQL scanner will be implemented in US-106
+  console.log('⚠ MySQL support not yet implemented — skipping schema extraction');
+  return loadExistingCache(projectPath);
 }
 
 function loadExistingCache(projectPath: string): SchemaCache | null {

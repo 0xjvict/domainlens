@@ -1,0 +1,133 @@
+{
+  "project": "DomainLens",
+  "branchName": "develop",
+  "description": "DomainLens – Agent-based domain explorer (FR-008). Adds `domainlens discover --agent` mode where an AI agent actively navigates the codebase using tool calls (read_file, list_directory, glob_files, search_text, read_schema, finish) to discover domain concepts by reasoning, instead of regex and heuristics. Replaces code scanning and heuristic inference steps only; schema extraction, docs, and rules skills remain deterministic.",
+  "userStories": [
+    {
+      "id": "US-101",
+      "title": "Extend DomainLensConfig with agent explorer fields",
+      "description": "As a developer, I need the config schema and `domainlens init` to support agent explorer settings so that users can configure the explorer model and safety limits per project.",
+      "acceptanceCriteria": [
+        "DomainLensConfig in src/types.ts extended with optional fields: explorer_model?: string, agent_max_files?: number, agent_max_context_tokens?: number",
+        "`domainlens init` writes agent_max_files: 150 and agent_max_context_tokens: 100000 to the generated config.json (explorer_model omitted from default — it is optional)",
+        "domainlens init is idempotent — running twice does not duplicate or overwrite existing values",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented in US-026 on develop branch."
+    },
+    {
+      "id": "US-102",
+      "title": "Implement agent tools module (src/agent/tools.ts)",
+      "description": "As a developer, I need a tools module that implements the filesystem and schema tools the agent can call, plus their OpenAI function call schemas, so that the agent loop can execute tool calls locally.",
+      "acceptanceCriteria": [
+        "Creates src/agent/tools.ts with 6 tool implementations: list_directory(path), glob_files(pattern), read_file(path, offset?), search_text(query, path?), read_schema(), finish(concepts)",
+        "list_directory: lists files and subdirectories under the given path; skips entries matching the ignore list from config; returns relative paths",
+        "glob_files: finds files matching a glob pattern within code_paths; skips ignored directories",
+        "read_file: reads a file returning up to 500 lines starting from offset (default 0); returns { content, totalLines, hasMore } so the agent knows if pagination is needed",
+        "search_text: searches for a text query across files in code_paths using substring match; returns [{ file, line, text }] (max 50 results)",
+        "read_schema: reads and returns the content of .domainlens/schemas/latest.json; returns null if file does not exist",
+        "finish: accepts { concepts: AgentConcept[] } where AgentConcept = { concept: string, definition: string, signals: { type: string, detail: string }[] }; this tool terminates the session",
+        "Exports AGENT_TOOL_SCHEMAS (array of OpenAI-compatible function definitions) and executeAgentTool(name, args, context) where context = { projectPath, config }",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented in US-027 on develop branch."
+    },
+    {
+      "id": "US-103",
+      "title": "Implement runAgentExplorer() session loop (src/agent/explorer.ts)",
+      "description": "As a developer, I need the core agentic loop that sends context and tools to the LLM via OpenRouter, executes tool calls locally, handles the soft file cap with user confirmation, enforces the context token limit, and returns AgentConcept[] on completion.",
+      "acceptanceCriteria": [
+        "Creates src/agent/explorer.ts exporting runAgentExplorer(schema, existingSkillNames, config, projectPath): Promise<AgentConcept[]>",
+        "Uses the OpenAI client (same pattern as src/llm/openrouter.ts) with baseURL https://openrouter.ai/api/v1; model from config.explorer_model falling back to config.llm_model",
+        "System prompt (English) instructs the agent to explore code_paths, understand domain concepts, and call finish() when done",
+        "Initial user message includes: schema JSON (from schemas/latest.json), list of existing skill names to skip, code_paths and ignore list",
+        "Agentic loop: send messages to LLM → receive tool calls → execute via executeAgentTool() → append results → repeat until finish() is called or limits hit",
+        "Streams each tool call to console as it happens: '  → list_directory src/services/' and '  → Concept found: \"premium_customer\" (3 signals)' when finish() is called",
+        "Tracks files read count; at agent_max_files boundary: prints summary of concepts found so far, prompts 'Continue reading? [y/N]' (reads from stdin); if N, delivers partial results; if Y, continues same session",
+        "Tracks approximate context tokens (sum of message content lengths / 4); at agent_max_context_tokens: finalizes current concept, logs warning, returns partial results",
+        "On any API error: logs error, returns whatever AgentConcept[] were accumulated before the error",
+        "Returns AgentConcept[] from finish() arguments or partial results collected during the session",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented as US-028 on develop branch."
+    },
+    {
+      "id": "US-104",
+      "title": "Wire --agent flag into domainlens discover",
+      "description": "As an engineer, I want `domainlens discover --agent` to replace the regex scanner and heuristic inferrer with the agent explorer, while keeping all other pipeline steps intact.",
+      "acceptanceCriteria": [
+        "DiscoverOptions in src/commands/discover.ts extended with agent?: boolean",
+        "--agent flag added to the discover CLI command in src/cli.ts",
+        "When --agent is set: steps 2 (code scanner), 3 (ORM scanner), and 5 (heuristic inferrer) are skipped; runAgentExplorer() is called after schema extraction, passing the extracted schema and list of existing skill names",
+        "AgentConcept[] from runAgentExplorer() is converted to DomainConcept[] compatible with generateDomainSkills(); the agent-provided definition is used directly (source: ai-generated); enrichConcept() is NOT called",
+        "generateRulesSkills() still runs deterministically using the extracted schema and any constants detected — it is not affected by --agent",
+        "--agent is compatible with --force (existing skills not passed to agent context), --dry-run (exploration runs, no writes), and --embeddings (pipeline runs after skill generation)",
+        "Progress output replaces steps 2-3-5 with: '▶ Step 2/4: Agent exploring codebase...' and streams tool calls",
+        "Summary line: 'X skills created (agent-discovered, ai-generated), Y skills updated'",
+        "If agent_max_files or agent_max_context_tokens are not set in config, defaults to 150 and 100000 respectively",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Implemented on develop branch."
+    },
+    {
+      "id": "US-105",
+      "title": "Add db_type config field, URL inference, and mysql2 dependency",
+      "description": "As a developer, I want the config schema to support a `db_type` field so that DomainLens knows whether to connect to PostgreSQL or MySQL, with URL-based inference as fallback for backward compatibility.",
+      "acceptanceCriteria": [
+        "DomainLensConfig in src/types.ts extended with db_type?: 'postgres' | 'mysql'",
+        "DEFAULT_CONFIG in src/commands/init.ts includes db_type: 'postgres'",
+        "`domainlens init` generates config.json with db_type field",
+        "URL inference logic: if db_type is undefined, parse the DATABASE_URL protocol — postgresql:// → postgres, mysql:// → mysql — otherwise default to postgres",
+        "mysql2@^3.12 added to package.json dependencies",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": null
+    },
+    {
+      "id": "US-106",
+      "title": "Implement MySQL schema scanner and refactor schema dispatch",
+      "description": "As a developer, I need a MySQL schema scanner so that DomainLens can extract schema metadata from MySQL databases, and a dispatcher in schema.ts that routes to the correct driver based on db_type.",
+      "acceptanceCriteria": [
+        "Creates src/extractors/schemaMysql.ts exporting extractSchemaMysql(config): Promise<SchemaCache> using mysql2/promise",
+        "MySQL queries use information_schema for tables, columns (with COLUMN_COMMENT), PKs, FKs, CHECK/UNIQUE constraints",
+        "MySQL indexes extracted via SHOW INDEX FROM or information_schema.STATISTICS",
+        "MySQL enums parsed from COLUMN_TYPE where it contains ENUM(...)",
+        "MySQL schema field populated via SELECT DATABASE()",
+        "Refactors src/extractors/schema.ts as a dispatcher: reads db_type from config (or infers from URL), imports and calls the appropriate scanner",
+        "Existing PostgreSQL extraction in schema.ts is extracted to src/extractors/schemaPostgres.ts without behavior changes",
+        "Error handling is identical: on connection failure, logs warning and returns null (preserves existing cache)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": null
+    },
+    {
+      "id": "US-107",
+      "title": "Add integration tests for MySQL schema extraction",
+      "description": "As a developer, I want tests that verify MySQL schema extraction works correctly, so that we catch regressions when modifying the MySQL scanner.",
+      "acceptanceCriteria": [
+        "Creates test file for MySQL scanner (e.g. src/extractors/__tests__/schemaMysql.test.ts or similar)",
+        "Integration tests use @testcontainers/mysql to spin up a real MySQL container",
+        "Tests verify: table list, column extraction (types, nullable, default, comment), primary keys, foreign keys, indexes, CHECK/UNIQUE constraints, enum column detection",
+        "Unit tests verify error handling: unreachable database returns null without throwing",
+        "Tests are skippable by default (opt-in via flag or env var like RUN_INTEGRATION_TESTS) so CI does not require MySQL",
+        "All existing tests still pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": null
+    }
+  ]
+}

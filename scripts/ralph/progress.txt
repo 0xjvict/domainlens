@@ -1,0 +1,34 @@
+# Ralph Progress Log
+Started: Fri Jun 12 17:57:28 -03 2026
+---
+
+## 2026-06-12 18:30 BRT - US-104
+- Wired --agent flag into domainlens discover CLI
+- Added agent branch in discover.ts: skips steps 2 (code scanner), 3 (ORM scanner), 5 (heuristic inferrer); runs agent explorer instead
+- Added tool call streaming in runner.ts (each tool call logged to console)
+- Added `definition?` field to DomainConcept type to carry agent-provided definitions
+- Modified generateDomainSkills to use pre-provided definitions and skip enrichConcept()
+- Added convertAgentConcepts() helper to bridge AgentConcept[] → DomainConcept[]
+- Added getExistingSkillNames() to read existing skill names for agent context
+- Added --option to CLI with --agent flag
+- Files changed: src/cli.ts, src/commands/discover.ts, src/inferrer/heuristics.ts, src/skills/domainSkills.ts, src/agent/runner.ts
+- **Learnings for future iterations:**
+  - Agent path uses 4 steps total (instead of 6), renumbering from 1/4 to 4/4
+  - Constants are silently extracted in agent mode because generateRulesSkills() still needs them
+  - Agent's Signal type (value + file) differs from DomainConcept's Signal type (detail + source) — bridge needed in convertAgentConcepts()
+  - The tool call streaming in runner.ts uses console.log with "  →" prefix for indentation under the step header
+---
+
+## 2026-06-12 - US-105
+- Added `db_type?: 'postgres' | 'mysql'` field to DomainLensConfig in types.ts
+- Added db_type: 'postgres' to DEFAULT_CONFIG in init.ts
+- Added `inferDbType()` function in schema.ts — uses config.db_type if set, otherwise infers from DATABASE_URL protocol (postgresql:// → postgres, mysql:// → mysql), defaulting to postgres
+- Added stub `extractSchemaMysql()` in schema.ts for the MySQL path (real implementation in US-106)
+- Added `mysql2@^3.12` dependency to package.json
+- Files changed: src/types.ts, src/commands/init.ts, src/extractors/schema.ts, package.json, package-lock.json
+- **Learnings for future iterations:**
+  - Config must always maintain backward compatibility — new optional fields with sensible defaults
+  - TypeScript union types (`'postgres' | 'mysql'`) work well for database type discrimination
+  - The schema.ts dispatcher pattern keeps the entry point stable while allowing driver-specific implementations
+  - `new URL(dbUrl).protocol` is a reliable parser for connection URL protocol detection
+---

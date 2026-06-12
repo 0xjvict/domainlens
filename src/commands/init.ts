@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const DEFAULT_CONFIG = {
   db_url_env: 'DATABASE_URL',
+  db_type: 'postgres',
   llm_key_env: 'OPENROUTER_API_KEY',
   llm_model: 'anthropic/claude-haiku-4-5',
   explorer_model: 'anthropic/claude-sonnet-4-6',
