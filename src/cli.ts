@@ -40,6 +40,7 @@ program
   .option('--dry-run', 'Preview what would be written without touching the filesystem')
   .option('--force', 'Regenerate all skills from scratch, overwriting existing files')
   .option('--no-enrich', 'Skip LLM enrichment and write skeleton skills only')
+  .option('--agent', 'Use AI agent to discover domain concepts (replaces scanner + heuristics)')
   .option('--embeddings', 'Also run the embedding pipeline after skill generation')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action((opts) => {
@@ -47,6 +48,7 @@ program
       dryRun: opts.dryRun,
       force: opts.force,
       noEnrich: opts.enrich === false,
+      agent: opts.agent,
       embeddings: opts.embeddings,
       project: opts.project,
     }).catch(errExit);

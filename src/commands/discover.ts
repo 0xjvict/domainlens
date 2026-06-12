@@ -1,18 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { DomainLensConfig } from '../types.js';
+import type { DomainLensConfig, AgentConcept } from '../types.js';
 import { extractSchema } from '../extractors/schema.js';
 import { scanSqlExamples, scanConstantsAndEnums } from '../extractors/codeScanner.js';
 import { scanOrm, type OrmType } from '../extractors/ormScanner.js';
 import { extractDocs } from '../extractors/docExtractor.js';
 import { inferConcepts } from '../inferrer/heuristics.js';
+import type { DomainConcept } from '../inferrer/heuristics.js';
 import { generateDomainSkills } from '../skills/domainSkills.js';
 import { generateRulesSkills } from '../skills/rulesSkills.js';
+import { runAgent } from '../agent/runner.js';
 
 export interface DiscoverOptions {
   dryRun?: boolean;
   force?: boolean;
   noEnrich?: boolean;
+  agent?: boolean;
   embeddings?: boolean;
   project?: string;
 }
@@ -36,6 +39,18 @@ export async function runDiscover(options: DiscoverOptions = {}): Promise<void> 
 
   console.log('DomainLens discover starting...\n');
 
+  if (options.agent) {
+    await runDiscoverAgent(projectPath, config, options);
+  } else {
+    await runDiscoverStandard(projectPath, config, options);
+  }
+}
+
+async function runDiscoverStandard(
+  projectPath: string,
+  config: DomainLensConfig,
+  options: DiscoverOptions
+): Promise<void> {
   console.log('▶ Step 1/6: Extracting database schema...');
   const schema = await extractSchema(config, projectPath);
   if (schema) {
@@ -113,6 +128,78 @@ export async function runDiscover(options: DiscoverOptions = {}): Promise<void> 
     : '';
 
   console.log(`  ${totalCreated} skills created ${enrichPart}, ${totalUpdated} skills updated${embedPart}`);
+}
+
+async function runDiscoverAgent(
+  projectPath: string,
+  config: DomainLensConfig,
+  options: DiscoverOptions
+): Promise<void> {
+  console.log('▶ Step 1/4: Extracting database schema...');
+  const schema = await extractSchema(config, projectPath);
+  if (schema) {
+    console.log(`  ✓ ${schema.tables.length} tables, ${schema.enums.length} enums`);
+  }
+
+  console.log('▶ Step 2/4: Agent exploring codebase...');
+  const existingSkills = options.force ? [] : getExistingSkillNames(projectPath);
+  const agentConcepts = await runAgent(config, projectPath, existingSkills);
+  const { constants } = scanConstantsAndEnums(config, projectPath);
+  const concepts = convertAgentConcepts(agentConcepts);
+  console.log(`  ✓ ${concepts.length} domain concepts discovered`);
+  for (const c of concepts) {
+    console.log(`    → Concept: "${c.concept}" (${c.signals.length} signals)`);
+  }
+
+  console.log('▶ Step 3/4: Extracting documentation...');
+  const { sections, sqlBlocks, adrs } = extractDocs(config, projectPath);
+  console.log(
+    `  ✓ ${sections.length} sections, ${sqlBlocks.length} SQL blocks, ${adrs.length} ADRs`
+  );
+
+  console.log('▶ Step 4/4: Generating skills...');
+  const domainResult = await generateDomainSkills(concepts, config, projectPath, {
+    dryRun: options.dryRun,
+    force: options.force,
+    noEnrich: true,
+  });
+
+  const rulesResult = await generateRulesSkills(schema, constants, config, projectPath, {
+    dryRun: options.dryRun,
+    force: options.force,
+    noEnrich: options.noEnrich,
+  });
+
+  const totalCreated = domainResult.created + rulesResult.created;
+  const totalUpdated = domainResult.updated + rulesResult.updated;
+
+  if (options.embeddings) {
+    console.log('\n▶ Embedding pipeline...');
+    await runEmbeddings(projectPath, config);
+  }
+
+  console.log('\n✓ Discovery complete');
+  console.log(`  ${totalCreated} skills created (agent-discovered, ai-generated), ${totalUpdated} skills updated`);
+}
+
+function getExistingSkillNames(projectPath: string): string[] {
+  const skillsDir = path.join(projectPath, 'skills', 'domain');
+  if (!fs.existsSync(skillsDir)) return [];
+  return fs.readdirSync(skillsDir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => f.replace(/\.md$/, ''));
+}
+
+function convertAgentConcepts(agentConcepts: AgentConcept[]): DomainConcept[] {
+  return agentConcepts.map((ac) => ({
+    concept: ac.concept,
+    definition: ac.definition,
+    signals: ac.signals.map((s) => ({
+      type: s.type as DomainConcept['signals'][number]['type'],
+      detail: s.value,
+      source: s.file,
+    })),
+  }));
 }
 
 async function runEmbeddings(projectPath: string, _config: DomainLensConfig): Promise<{ indexed: number }> {

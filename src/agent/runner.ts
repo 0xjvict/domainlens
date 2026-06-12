@@ -79,8 +79,11 @@ export async function runAgent(
 
       if (name === 'finish') {
         const concepts = parseFinishArgs(args);
+        console.log(`  → finish() — ${concepts.length} concepts`);
         return concepts;
       }
+
+      console.log(`  → ${name} ${JSON.stringify(args)}`);
 
       if (name === 'read_file') {
         fileReads++;

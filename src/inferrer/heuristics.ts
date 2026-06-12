@@ -22,6 +22,7 @@ export interface Signal {
 
 export interface DomainConcept {
   concept: string;
+  definition?: string;
   signals: Signal[];
 }
 

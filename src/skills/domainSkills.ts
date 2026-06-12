@@ -48,16 +48,25 @@ export async function generateDomainSkills(
         updated++;
       }
     } else {
-      let definition = '<!-- TODO: fill in the business definition of this concept -->';
-      let source = 'auto-generated';
+      let definition: string;
+      let source: string;
 
-      if (!options.noEnrich) {
+      if (concept.definition) {
+        definition = concept.definition;
+        source = 'ai-generated';
+      } else if (!options.noEnrich) {
         const enriched_def = await enrichConcept(concept.concept, concept.signals, config);
         if (enriched_def) {
           definition = enriched_def;
           source = 'ai-generated';
           enriched++;
+        } else {
+          definition = '<!-- TODO: fill in the business definition of this concept -->';
+          source = 'auto-generated';
         }
+      } else {
+        definition = '<!-- TODO: fill in the business definition of this concept -->';
+        source = 'auto-generated';
       }
 
       const content = buildDomainSkill(concept, definition, source);
