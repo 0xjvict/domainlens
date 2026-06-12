@@ -68,74 +68,80 @@ export async function embedAll(projectPath: string): Promise<EmbedResult> {
   const db = new Database(dbPath);
   loadVec(db);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS vec_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source TEXT NOT NULL UNIQUE,
-      type TEXT NOT NULL,
-      excerpt TEXT NOT NULL,
-      embedding BLOB NOT NULL,
-      hash TEXT NOT NULL
-    )
-  `);
-
-  const model = await loadModel();
-
-  const items: EmbedItem[] = [];
-  collectSkills(projectPath, items);
-  collectSchema(projectPath, items);
-
-  const sqlExamples = scanSqlExamples(config, projectPath);
-  for (const ex of sqlExamples) {
-    items.push({
-      source: `${ex.file}:${ex.line}`,
-      type: 'sql_example',
-      excerpt: ex.sql,
-    });
-  }
-
-  const { constants } = scanConstantsAndEnums(config, projectPath);
-  for (const c of constants) {
-    items.push({
-      source: `${c.file}:${c.line}:${c.name}`,
-      type: 'constant',
-      excerpt: `${c.name} = ${c.value}`,
-    });
-  }
-
-  const getBySource = db.prepare<[string], VecItemRow>('SELECT hash FROM vec_items WHERE source = ?');
-  const insert = db.prepare(
-    'INSERT INTO vec_items (source, type, excerpt, embedding, hash) VALUES (?, ?, ?, ?, ?)'
-  );
-  const update = db.prepare(
-    'UPDATE vec_items SET type = ?, excerpt = ?, embedding = ?, hash = ? WHERE source = ?'
-  );
-
   let indexed = 0;
   let skipped = 0;
 
-  for (const item of items) {
-    const hash = crypto.createHash('sha256').update(item.excerpt).digest('hex');
-    const existing = getBySource.get(item.source);
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS vec_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        excerpt TEXT NOT NULL,
+        embedding BLOB NOT NULL,
+        hash TEXT NOT NULL
+      )
+    `);
 
-    if (existing?.hash === hash) {
-      skipped++;
-      continue;
+    const model = await loadModel();
+
+    const items: EmbedItem[] = [];
+    collectSkills(projectPath, items);
+    collectSchema(projectPath, items);
+
+    const sqlExamples = scanSqlExamples(config, projectPath);
+    for (const ex of sqlExamples) {
+      items.push({
+        source: `${ex.file}:${ex.line}`,
+        type: 'sql_example',
+        excerpt: ex.sql,
+      });
     }
 
-    const result = await model(item.excerpt, { pooling: 'mean', normalize: true });
-    const float32 = result.data as Float32Array;
-    const embeddingBlob = Buffer.from(float32.buffer);
-
-    if (existing) {
-      update.run(item.type, item.excerpt, embeddingBlob, hash, item.source);
-    } else {
-      insert.run(item.source, item.type, item.excerpt, embeddingBlob, hash);
+    const { constants } = scanConstantsAndEnums(config, projectPath);
+    for (const c of constants) {
+      items.push({
+        source: `${c.file}:${c.line}:${c.name}`,
+        type: 'constant',
+        excerpt: `${c.name} = ${c.value}`,
+      });
     }
-    indexed++;
+
+    const getBySource = db.prepare<[string], VecItemRow>('SELECT hash FROM vec_items WHERE source = ?');
+    const insert = db.prepare(
+      'INSERT INTO vec_items (source, type, excerpt, embedding, hash) VALUES (?, ?, ?, ?, ?)'
+    );
+    const update = db.prepare(
+      'UPDATE vec_items SET type = ?, excerpt = ?, embedding = ?, hash = ? WHERE source = ?'
+    );
+
+    for (const item of items) {
+      const hash = crypto.createHash('sha256').update(item.excerpt).digest('hex');
+      const existing = getBySource.get(item.source);
+
+      if (existing?.hash === hash) {
+        skipped++;
+        continue;
+      }
+
+      const result = await model(item.excerpt, { pooling: 'mean', normalize: true });
+      const float32 = result.data;
+      if (!(float32 instanceof Float32Array)) {
+        throw new Error(`Expected Float32Array from model output, got ${(float32 as unknown as { constructor?: { name?: string } })?.constructor?.name ?? 'unknown'}`);
+      }
+      const embeddingBlob = Buffer.from(float32.buffer);
+
+      if (existing) {
+        update.run(item.type, item.excerpt, embeddingBlob, hash, item.source);
+      } else {
+        insert.run(item.source, item.type, item.excerpt, embeddingBlob, hash);
+      }
+      indexed++;
+    }
+  } finally {
+    db.close();
   }
 
-  db.close();
   console.log(`  ✓ ${indexed} embeddings indexed, ${skipped} unchanged`);
   return { indexed, skipped };
 }

@@ -4,7 +4,10 @@ import * as path from 'path';
 
 export type EmbeddingPipeline = Awaited<ReturnType<typeof pipeline<'feature-extraction'>>>;
 
+let cached: EmbeddingPipeline | null = null;
+
 export async function loadModel(): Promise<EmbeddingPipeline> {
+  if (cached) return cached;
   const cacheDir = path.join(os.homedir(), '.domainlens', 'models');
   // env.cacheDir is mutable at runtime; the d.ts exposes it as a re-exported const
   (env as unknown as { cacheDir: string }).cacheDir = cacheDir;
@@ -31,5 +34,6 @@ export async function loadModel(): Promise<EmbeddingPipeline> {
     process.stdout.write('\n');
   }
 
-  return extractor;
+  cached = extractor;
+  return cached;
 }

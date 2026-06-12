@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseFrontmatter, parseTags } from '../utils/frontmatter.js';
 
 export interface SkillsOptions {
   project?: string;
@@ -37,9 +38,9 @@ export function listSkills(options: SkillsOptions = {}): void {
   const tagsLabel = 'Tags';
   const sourceLabel = 'Source';
 
-  const nameW = Math.max(...rows.map((r) => r.name.length), nameLabel.length);
-  const typeW = Math.max(...rows.map((r) => r.type.length), typeLabel.length);
-  const tagsW = Math.max(...rows.map((r) => r.tags.length), tagsLabel.length);
+  const nameW = Math.max(0, ...rows.map((r) => r.name.length), nameLabel.length);
+  const typeW = Math.max(0, ...rows.map((r) => r.type.length), typeLabel.length);
+  const tagsW = Math.max(0, ...rows.map((r) => r.tags.length), tagsLabel.length);
 
   const sep = `  ${'─'.repeat(nameW)} ─ ${'─'.repeat(typeW)} ─ ${'─'.repeat(tagsW)} ─ ${'─'.repeat(sourceLabel.length)}`;
 
@@ -73,24 +74,3 @@ export function showSkill(name: string, options: SkillsOptions = {}): void {
   process.exit(1);
 }
 
-function parseFrontmatter(
-  content: string,
-): { name?: string; type?: string; tags?: string; source?: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return {};
-  const fm: Record<string, string> = {};
-  for (const line of match[1].split('\n')) {
-    const idx = line.indexOf(': ');
-    if (idx > 0) {
-      fm[line.slice(0, idx).trim()] = line.slice(idx + 2).trim();
-    }
-  }
-  return fm;
-}
-
-function parseTags(tagsStr?: string): string[] {
-  if (!tagsStr) return [];
-  const inner = tagsStr.replace(/^\[|\]$/g, '');
-  if (!inner) return [];
-  return inner.split(',').map((t) => t.trim()).filter(Boolean);
-}

@@ -58,15 +58,15 @@ export function inferConcepts(input: InferrerInput): DomainConcept[] {
           });
         }
       }
+    }
 
-      for (const enumType of input.schema.enums) {
-        const concept = toSnakeCase(enumType.name);
-        addSignal(concept, {
-          type: 'enum',
-          detail: `Enum: \`${enumType.name}\` = [${enumType.values.map((v) => `"${v}"`).join(', ')}]`,
-          source: enumType.name,
-        });
-      }
+    for (const enumType of input.schema.enums) {
+      const concept = toSnakeCase(enumType.name);
+      addSignal(concept, {
+        type: 'enum',
+        detail: `Enum: \`${enumType.name}\` = [${enumType.values.map((v) => `"${v}"`).join(', ')}]`,
+        source: enumType.name,
+      });
     }
   }
 

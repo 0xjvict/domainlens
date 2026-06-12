@@ -1,21 +1,37 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { runInit } from './commands/init.js';
 import { runDiscover } from './commands/discover.js';
-import { loadModel } from './embeddings/model.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const { version } = JSON.parse(
+  readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
+) as { version: string };
+
+const errExit = (err: unknown): never => {
+  console.error('Error:', err instanceof Error ? err.message : String(err));
+  process.exit(1);
+};
 
 const program = new Command();
 
 program
   .name('domainlens')
   .description('AI-native domain knowledge layer for code agents')
-  .version('0.1.0');
+  .version(version);
 
 program
   .command('init')
   .description('Initialize DomainLens in the current project')
   .action(() => {
-    runInit();
+    try {
+      runInit();
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 program
@@ -33,10 +49,7 @@ program
       noEnrich: opts.enrich === false,
       embeddings: opts.embeddings,
       project: opts.project,
-    }).catch((err: unknown) => {
-      console.error('Error:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    });
+    }).catch(errExit);
   });
 
 const modelsCmd = program.command('models').description('Manage embedding models');
@@ -45,8 +58,13 @@ modelsCmd
   .command('download')
   .description('Pre-download and cache the embedding model (~80MB, happens once)')
   .action(async () => {
-    await loadModel();
-    console.log('Embedding model ready.');
+    try {
+      const { loadModel } = await import('./embeddings/model.js');
+      await loadModel();
+      console.log('Embedding model ready.');
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 program
@@ -54,10 +72,14 @@ program
   .description('Start the MCP stdio server for AI agent integration')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action(async (opts) => {
-    const { startServer } = await import('./mcp/server.js');
-    const projectPath = opts.project ? opts.project : process.cwd();
-    process.stderr.write('DomainLens MCP server started (stdio)\n');
-    await startServer(projectPath);
+    try {
+      const { startServer } = await import('./mcp/server.js');
+      const projectPath = opts.project ?? process.cwd();
+      process.stderr.write('DomainLens MCP server started (stdio)\n');
+      await startServer(projectPath);
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 program
@@ -65,8 +87,12 @@ program
   .description('Show project statistics summary')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action(async (opts) => {
-    const { runStatus } = await import('./commands/status.js');
-    runStatus({ project: opts.project });
+    try {
+      const { runStatus } = await import('./commands/status.js');
+      runStatus({ project: opts.project });
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 const skillsCmd = program.command('skills').description('List and inspect generated skills');
@@ -76,8 +102,12 @@ skillsCmd
   .description('List all generated skills in a table')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action(async (opts) => {
-    const { listSkills } = await import('./commands/skills.js');
-    listSkills({ project: opts.project });
+    try {
+      const { listSkills } = await import('./commands/skills.js');
+      listSkills({ project: opts.project });
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 skillsCmd
@@ -85,8 +115,12 @@ skillsCmd
   .description('Show the full Markdown content of a skill')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action(async (name, opts) => {
-    const { showSkill } = await import('./commands/skills.js');
-    showSkill(name, { project: opts.project });
+    try {
+      const { showSkill } = await import('./commands/skills.js');
+      showSkill(name, { project: opts.project });
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 program
@@ -94,8 +128,12 @@ program
   .description('Print MCP configuration JSON for your AI agent')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action(async (opts) => {
-    const { printMcpConfig } = await import('./commands/mcpConfig.js');
-    printMcpConfig({ project: opts.project });
+    try {
+      const { printMcpConfig } = await import('./commands/mcpConfig.js');
+      printMcpConfig({ project: opts.project });
+    } catch (err) {
+      errExit(err);
+    }
   });
 
 program.parse(process.argv);

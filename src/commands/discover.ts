@@ -26,7 +26,13 @@ export async function runDiscover(options: DiscoverOptions = {}): Promise<void> 
     process.exit(1);
   }
 
-  const config: DomainLensConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  let config: DomainLensConfig;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as DomainLensConfig;
+  } catch {
+    console.error('✗ Failed to parse .domainlens/config.json — check for syntax errors.');
+    process.exit(1);
+  }
 
   console.log('DomainLens discover starting...\n');
 

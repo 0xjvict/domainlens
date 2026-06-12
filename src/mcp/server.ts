@@ -1,15 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { load as loadVec } from 'sqlite-vec';
 import type { SchemaCache } from '../types.js';
+import { parseFrontmatter, parseTags } from '../utils/frontmatter.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const { version } = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf-8')
+) as { version: string };
 
 export function createServer(projectPath: string): McpServer {
   const server = new McpServer(
-    { name: 'domainlens', version: '0.1.0' },
+    { name: 'domainlens', version },
     { capabilities: { tools: {} } },
   );
 
@@ -84,51 +91,55 @@ export function createServer(projectPath: string): McpServer {
       const db = new Database(dbPath);
       loadVec(db);
 
-      const rowCount = db.prepare('SELECT COUNT(*) AS cnt FROM vec_items').get() as {
-        cnt: number;
-      };
+      try {
+        const rowCount = db.prepare('SELECT COUNT(*) AS cnt FROM vec_items').get() as {
+          cnt: number;
+        };
 
-      if (!rowCount || rowCount.cnt === 0) {
-        db.close();
+        if (!rowCount || rowCount.cnt === 0) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error:
+                    'No embeddings found. Run `domainlens discover --embeddings` to generate embeddings first.',
+                }),
+              },
+            ],
+          };
+        }
+
+        const { loadModel } = await import('../embeddings/model.js');
+        const model = await loadModel();
+
+        const result = await model(args.query, { pooling: 'mean', normalize: true });
+        const float32 = result.data;
+        if (!(float32 instanceof Float32Array)) {
+          throw new Error(`Expected Float32Array from model output`);
+        }
+        const queryEmbedding = Buffer.from(float32.buffer);
+
+        const rows = db
+          .prepare<[Buffer, number], { source: string; type: string; excerpt: string; score: number }>(
+            `SELECT source, type, excerpt, vec_distance_cosine(embedding, ?) AS score
+             FROM vec_items
+             ORDER BY score ASC
+             LIMIT ?`,
+          )
+          .all(queryEmbedding, args.limit ?? 5);
+
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify({
-                error:
-                  'No embeddings found. Run `domainlens discover --embeddings` to generate embeddings first.',
-              }),
+              text: JSON.stringify(rows, null, 2),
             },
           ],
         };
+      } finally {
+        db.close();
       }
-
-      const { loadModel } = await import('../embeddings/model.js');
-      const model = await loadModel();
-
-      const result = await model(args.query, { pooling: 'mean', normalize: true });
-      const float32 = result.data as Float32Array;
-      const queryEmbedding = Buffer.from(float32.buffer);
-
-      const rows = db
-        .prepare<[Buffer, number], { source: string; type: string; excerpt: string; score: number }>(
-          `SELECT source, type, excerpt, vec_distance_cosine(embedding, ?) AS score
-           FROM vec_items
-           ORDER BY score ASC
-           LIMIT ?`,
-        )
-        .all(queryEmbedding, args.limit ?? 5);
-
-      db.close();
-
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(rows, null, 2),
-          },
-        ],
-      };
     },
   );
 
@@ -214,29 +225,10 @@ export function createServer(projectPath: string): McpServer {
   return server;
 }
 
-function parseFrontmatter(
-  content: string,
-): { name?: string; type?: string; tags?: string; source?: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return {};
-  const fm: Record<string, string> = {};
-  for (const line of match[1].split('\n')) {
-    const idx = line.indexOf(': ');
-    if (idx > 0) {
-      fm[line.slice(0, idx).trim()] = line.slice(idx + 2).trim();
-    }
-  }
-  return fm;
-}
-
-function parseTags(tagsStr?: string): string[] {
-  if (!tagsStr) return [];
-  const inner = tagsStr.replace(/^\[|\]$/g, '');
-  if (!inner) return [];
-  return inner.split(',').map((t) => t.trim()).filter(Boolean);
-}
-
 export async function startServer(projectPath: string): Promise<void> {
+  const { loadModel } = await import('../embeddings/model.js');
+  await loadModel().catch(() => { /* model not cached yet — will load on first search_semantic call */ });
+
   const server = createServer(projectPath);
   const transport = new StdioServerTransport();
   await server.connect(transport);

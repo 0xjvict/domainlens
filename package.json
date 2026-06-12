@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build && chmod +x dist/cli.js"
   },
   "files": [
     "dist"
@@ -26,6 +27,15 @@
     "postgresql"
   ],
   "license": "MIT",
+  "author": "jvmelo <jvmelo.dev@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jvmelo/domainlens.git"
+  },
+  "homepage": "https://github.com/jvmelo/domainlens#readme",
+  "bugs": {
+    "url": "https://github.com/jvmelo/domainlens/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@xenova/transformers": "^2.17.2",
@@ -33,7 +43,8 @@
     "commander": "^12.1.0",
     "openai": "^6.42.0",
     "pg": "^8.21.0",
-    "sqlite-vec": "^0.1.9"
+    "sqlite-vec": "^0.1.9",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

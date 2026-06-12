@@ -12,7 +12,7 @@ export function printMcpConfig(options: McpConfigOptions = {}): void {
   try {
     binaryPath = fileURLToPath(import.meta.url);
     const distDir = path.dirname(binaryPath);
-    binaryPath = path.resolve(distDir, '..', '..', 'dist', 'cli.js');
+    binaryPath = path.resolve(distDir, '..', 'cli.js');
   } catch {
     binaryPath = process.argv[1];
   }

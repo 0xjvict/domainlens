@@ -16,7 +16,7 @@ export async function extractSchema(
     return loadExistingCache(projectPath);
   }
 
-  const client = new Client({ connectionString: dbUrl });
+  const client = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
 
   try {
     await client.connect();
