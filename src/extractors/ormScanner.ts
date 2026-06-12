@@ -30,7 +30,7 @@ const DETECT_IGNORE = new Set([
   '.domainlens',
 ]);
 
-export function detectOrm(projectRoot: string): OrmType | null {
+export function detectOrm(projectRoot: string, config?: DomainLensConfig): OrmType | null {
   // Prisma: schema.prisma exists at prisma/schema.prisma or schema.prisma
   if (
     fs.existsSync(path.join(projectRoot, 'prisma', 'schema.prisma')) ||
@@ -44,13 +44,18 @@ export function detectOrm(projectRoot: string): OrmType | null {
     return 'django';
   }
 
-  // Laravel: app/Models/*.php containing 'extends Model'
-  const laravelDir = path.join(projectRoot, 'app', 'Models');
-  if (fs.existsSync(laravelDir)) {
-    for (const file of readdirSafe(laravelDir)) {
-      if (!file.endsWith('.php')) continue;
-      const content = readFileSafe(path.join(laravelDir, file));
-      if (content && /extends\s+Model/.test(content)) return 'laravel';
+  // Laravel: scan configured model paths for PHP files extending a known Eloquent base
+  const modelPaths = config?.laravel_model_paths ?? ['app/Models'];
+  const baseModels = config?.laravel_base_models ?? ['Model'];
+  const ignoreSet = new Set([...DETECT_IGNORE, ...(config?.ignore ?? [])]);
+  const basePattern = new RegExp(`extends\\s+(${baseModels.map((b) => escapeRegExp(b)).join('|')})`);
+
+  for (const modelPath of modelPaths) {
+    const absPath = path.join(projectRoot, modelPath);
+    const phpFiles = walkPhpFiles(absPath, ignoreSet);
+    for (const filePath of phpFiles) {
+      const content = readFileSafe(filePath);
+      if (content && basePattern.test(content)) return 'laravel';
     }
   }
 
@@ -62,7 +67,7 @@ export function scanOrm(
   config: DomainLensConfig,
   ormOverride?: OrmType
 ): OrmScanResult {
-  const orm = ormOverride ?? detectOrm(projectRoot);
+  const orm = ormOverride ?? detectOrm(projectRoot, config);
   if (!orm) return { orm: null, signals: [] };
 
   const signals =
@@ -70,7 +75,12 @@ export function scanOrm(
       ? scanPrisma(projectRoot, config.ignore)
       : orm === 'django'
         ? scanDjango(projectRoot, config.ignore)
-        : scanLaravel(projectRoot, config.ignore);
+        : scanLaravel(
+            projectRoot,
+            config.ignore,
+            config.laravel_model_paths ?? ['app/Models'],
+            config.laravel_base_models ?? ['Model'],
+          );
 
   return { orm, signals };
 }
@@ -241,22 +251,30 @@ function scanDjango(projectRoot: string, ignoreList: string[]): OrmSignal[] {
   return signals;
 }
 
-function scanLaravel(projectRoot: string, ignoreList: string[]): OrmSignal[] {
+function scanLaravel(
+  projectRoot: string,
+  ignoreList: string[],
+  modelPaths: string[],
+  baseModels: string[],
+): OrmSignal[] {
   const signals: OrmSignal[] = [];
-  const laravelDir = path.join(projectRoot, 'app', 'Models');
-  if (!fs.existsSync(laravelDir)) return signals;
+  const ignoreSet = new Set([...DETECT_IGNORE, ...ignoreList]);
+  const basePattern = new RegExp(
+    `extends\\s+(${baseModels.map((b) => escapeRegExp(b)).join('|')})`,
+  );
+  const classPattern = new RegExp(
+    `class\\s+(\\w+)\\s+extends\\s+(${baseModels.map((b) => escapeRegExp(b)).join('|')})`,
+  );
 
-  const phpFiles = readdirSafe(laravelDir)
-    .filter((f) => f.endsWith('.php'))
-    .map((f) => path.join(laravelDir, f))
-    .filter((f) => {
-      const rel = path.relative(projectRoot, f);
-      return !ignoreList.some((ig) => rel.startsWith(ig));
-    });
+  const phpFiles: string[] = [];
+  for (const modelPath of modelPaths) {
+    const absPath = path.join(projectRoot, modelPath);
+    phpFiles.push(...walkPhpFiles(absPath, ignoreSet));
+  }
 
   for (const filePath of phpFiles) {
     const content = readFileSafe(filePath);
-    if (!content || !/extends\s+Model/.test(content)) continue;
+    if (!content || !basePattern.test(content)) continue;
 
     const relFile = path.relative(projectRoot, filePath);
     const lines = content.split('\n');
@@ -266,7 +284,7 @@ function scanLaravel(projectRoot: string, ignoreList: string[]): OrmSignal[] {
       const line = lines[i];
       const lineNum = i + 1;
 
-      const classMatch = line.match(/class\s+(\w+)\s+extends\s+Model/);
+      const classMatch = line.match(classPattern);
       if (classMatch) {
         currentClass = classMatch[1];
         signals.push({
@@ -318,6 +336,32 @@ function scanLaravel(projectRoot: string, ignoreList: string[]): OrmSignal[] {
   }
 
   return signals;
+}
+
+function walkPhpFiles(dir: string, ignoreSet: Set<string>): string[] {
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  for (const entry of entries) {
+    if (ignoreSet.has(entry.name)) continue;
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...walkPhpFiles(fullPath, ignoreSet));
+    } else if (entry.isFile() && entry.name.endsWith('.php')) {
+      results.push(fullPath);
+    }
+  }
+
+  return results;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function readFileSafe(filePath: string): string | null {

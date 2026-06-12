@@ -6,6 +6,8 @@ export interface DomainLensConfig {
   docs_paths: string[];
   ignore: string[];
   orm?: string;
+  laravel_model_paths?: string[];
+  laravel_base_models?: string[];
 }
 
 export interface ColumnInfo {
