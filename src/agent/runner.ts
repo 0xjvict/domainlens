@@ -43,7 +43,6 @@ export async function runAgent(
 
   let fileReads = 0;
   let accumulatedInputTokens = 0;
-  const partialConcepts: AgentConcept[] = [];
   let iterationCount = 0;
   const MAX_ITERATIONS = 100;
   const MAX_CONSECUTIVE_TEXT = 2;
@@ -127,7 +126,7 @@ export async function runAgent(
 
     if (fileReads >= agentMaxFiles) {
       console.log(
-        `\n⚠ File read limit reached (${fileReads} files read, ${partialConcepts.length} concepts found so far).`
+        `\n⚠ File read limit reached (${fileReads} files read, ~${accumulatedInputTokens.toLocaleString()} tokens accumulated).`
       );
       const shouldContinue = await promptYesNo('Continue reading? [y/N]: ');
       if (!shouldContinue) {
