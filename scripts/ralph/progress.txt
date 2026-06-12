@@ -4,6 +4,7 @@
 - MySQL ENUM types are inline in `COLUMN_TYPE`, not separate system catalog entries — parse via regex
 - Tests use vitest with `describe.runIf(process.env.RUN_INTEGRATION_TESTS)` to skip integration tests by default
 - mysql2/promise uses `connection.query()` returning `[rows, fields]`, different from pg's `client.query()` returning `{ rows }`
+- MySQL `information_schema.KEY_COLUMN_USAGE` has `REFERENCED_TABLE_NAME`/`REFERENCED_COLUMN_NAME` columns directly; `CONSTRAINT_COLUMN_USAGE` does not exist in MySQL — use `referenced_table_name IS NOT NULL` instead of joining `table_constraints` with `constraint_type = 'FOREIGN KEY'`
 
 # Ralph Progress Log
 Started: Fri Jun 12 17:57:28 -03 2026
@@ -71,5 +72,15 @@ Started: Fri Jun 12 17:57:28 -03 2026
   - vitest's `describe.runIf(condition)` cleanly skips integration tests without env var
   - `@testcontainers/mysql` maps directly to testcontainers — `new MySqlContainer('mysql:8')` starts a container
   - Unit tests for DB-dependent code work by simply not setting env vars (no mocking needed)
-  - tsconfig must exclude `__tests__` dirs to avoid compiling test files into dist
+   - tsconfig must exclude `__tests__` dirs to avoid compiling test files into dist
+---
+
+## 2026-06-12 - US-108
+- Fixed MySQL FK query in schemaMysql.ts — replaced PostgreSQL-specific `information_schema.constraint_column_usage` with MySQL's `key_column_usage.referenced_table_name`/`referenced_column_name`
+- Old query joined `table_constraints` + `key_column_usage` + `constraint_column_usage`; new query uses `key_column_usage` directly with `referenced_table_name IS NOT NULL`
+- Files changed: src/extractors/schemaMysql.ts
+- **Learnings for future iterations:**
+  - MySQL `information_schema.KEY_COLUMN_USAGE` has `REFERENCED_TABLE_NAME` and `REFERENCED_COLUMN_NAME` columns directly — no need to join `CONSTRAINT_COLUMN_USAGE` (which doesn't exist in MySQL)
+  - `referenced_table_name IS NOT NULL` is equivalent to filtering by `constraint_type = 'FOREIGN KEY'` in MySQL's key_column_usage
+  - When porting PG queries to MySQL, always verify the information_schema views exist — they differ significantly between databases
 ---

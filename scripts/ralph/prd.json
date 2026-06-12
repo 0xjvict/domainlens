@@ -128,6 +128,21 @@
       "priority": 3,
       "passes": true,
       "notes": null
+    },
+    {
+      "id": "US-108",
+      "title": "Fix MySQL FK query — information_schema.constraint_column_usage does not exist in MySQL",
+      "description": "As a developer, I need the MySQL schema extractor to use MySQL-compatible information_schema queries for foreign keys, because `information_schema.constraint_column_usage` is a PostgreSQL-specific view and causes a fatal error when scanning MySQL databases.",
+      "acceptanceCriteria": [
+        "MySQL FK query in schemaMysql.ts replaces `JOIN information_schema.constraint_column_usage` with MySQL's `key_column_usage` which has `referenced_table_name` and `referenced_column_name` columns",
+        "`domainlens discover --embeddings` against a MySQL database no longer throws 'Unknown table constraint_column_usage'",
+        "FK extraction produces correct foreign_table_name and foreign_column_name values",
+        "Existing PostgreSQL FK extraction in schemaPostgres.ts is unchanged",
+        "All existing tests still pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "The FK query at schemaMysql.ts:190 was copied from the PostgreSQL scanner but MySQL uses KEY_COLUMN_USAGE with REFERENCED_TABLE_NAME/REFERENCED_COLUMN_NAME instead."
     }
   ]
 }
