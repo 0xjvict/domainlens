@@ -11,6 +11,21 @@
 
 ---
 
+## 2026-06-12 - US-027
+- Created src/agent/tools.ts with five tool handlers: list_directory, glob_files, read_file, search_text, read_schema
+- Exported getToolDefinitions() returning OpenAI-compatible tool definition array
+- Exported createToolHandlers(config, projectPath) returning a map of tool name → handler
+- All tools respect config.ignore list; glob uses custom globToRegex supporting * and **
+- read_file returns up to 500 lines with an optional offset for pagination; includes line count header
+- search_text is case-insensitive, capped at 100 results; accepts optional path to restrict scope
+- read_schema reads .domainlens/schemas/latest.json, returns '{}' if not found
+- **Learnings for future iterations:**
+  - Tools are split: getToolDefinitions() (static schema) vs createToolHandlers() (runtime closures with config/projectPath)
+  - isIgnored() helper mirrors codeScanner.ts pattern: checks relativePath.startsWith(ig) || name === ig
+  - glob ** handling: replace **/ → (?:.+/)? and /** → (?:/.+)? before replacing single *
+  - Binary file detection uses \x00 null byte check (same pattern as codeScanner.ts)
+---
+
 ## 2026-06-12 - US-026
 - Added Signal and AgentConcept interfaces to src/types.ts
 - Added explorer_model, agent_max_files, agent_max_context_tokens to DomainLensConfig type
