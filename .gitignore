@@ -1,0 +1,9 @@
+.idea/
+node_modules/
+dist/
+*.js.map
+.domainlens/schemas/
+.domainlens/embeddings.db
+/scripts
+PRD.md
+.claude
