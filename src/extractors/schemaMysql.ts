@@ -251,8 +251,6 @@ async function extractTableDetails(
     uniqueConstraints.set(r.constraint_name, existing);
   }
 
-  const enumColumnNames = new Set(enumColumns.map((ec) => ec.enumName));
-
   return {
     name: tableName,
     schema,

@@ -1,3 +1,10 @@
+## Codebase Patterns
+- Schema scanners follow a dispatcher pattern: `schema.ts` routes to `schemaPostgres.ts` or `schemaMysql.ts` based on `db_type`
+- Database type is configured in `config.json` (`db_type`) or inferred from URL protocol via `new URL(dbUrl).protocol`
+- MySQL ENUM types are inline in `COLUMN_TYPE`, not separate system catalog entries — parse via regex
+- Tests use vitest with `describe.runIf(process.env.RUN_INTEGRATION_TESTS)` to skip integration tests by default
+- mysql2/promise uses `connection.query()` returning `[rows, fields]`, different from pg's `client.query()` returning `{ rows }`
+
 # Ralph Progress Log
 Started: Fri Jun 12 17:57:28 -03 2026
 ---
@@ -49,4 +56,20 @@ Started: Fri Jun 12 17:57:28 -03 2026
   - MySQL ENUM types are inline in COLUMN_TYPE not separate system catalog entries
   - mysql2/promise uses `connection.query()` returning `[rows, fields]` — different from pg's `client.query()` returning `{ rows }`
   - `information_schema.COLUMNS.COLUMN_COMMENT` replaces `pg_catalog.col_description()` for MySQL
+---
+
+## 2026-06-12 - US-107
+- Added vitest v4 as test runner and @testcontainers/mysql for integration tests
+- Created vitest.config.ts (node environment, globals enabled)
+- Added test scripts: `npm test` (unit) and `npm test:integration` (with RUN_INTEGRATION_TESTS env)
+- Created `src/extractors/__tests__/schemaMysql.test.ts` with:
+  - Unit tests (5): no DB URL → null, empty URL → null, unreachable host → null, URL inference → null, no config → null
+  - Integration tests (9, skipped by default): table list, columns (types/nullable/default), PK, FK, indexes, CHECK, UNIQUE, ENUM parsing, schema field
+- Updated tsconfig.json to exclude `src/**/__tests__` from the build
+- Files changed: package.json, package-lock.json, tsconfig.json, vitest.config.ts (new), src/extractors/__tests__/schemaMysql.test.ts (new)
+- **Learnings for future iterations:**
+  - vitest's `describe.runIf(condition)` cleanly skips integration tests without env var
+  - `@testcontainers/mysql` maps directly to testcontainers — `new MySqlContainer('mysql:8')` starts a container
+  - Unit tests for DB-dependent code work by simply not setting env vars (no mocking needed)
+  - tsconfig must exclude `__tests__` dirs to avoid compiling test files into dist
 ---
