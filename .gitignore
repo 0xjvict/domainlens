@@ -1,9 +1,26 @@
+# Editor
 .idea/
+.vscode/
+.DS_Store
+
+# Dependencies and build
 node_modules/
 dist/
+*.tsbuildinfo
 *.js.map
-.domainlens/schemas/
-.domainlens/embeddings.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.*
+
+# DomainLens runtime files (generated, not for source control)
+.domainlens/
+
+# Internal
 /scripts
 PRD.md
 .claude
