@@ -11,6 +11,22 @@
 
 ---
 
+## 2026-06-12 - US-028
+- Created src/agent/runner.ts exporting runAgent(config, projectPath, existingSkills, options): Promise<AgentConcept[]>
+- Uses OpenAI client pointing at OpenRouter with explorer_model (falls back to llm_model)
+- System prompt includes: schema JSON, existing skill names, code_paths, ignore list, finish() instruction
+- Loop: calls LLM, handles tool_use by dispatching to tool handlers from tools.ts, feeds tool_result back
+- finish(concepts) tool call ends loop and returns parsed AgentConcept[]
+- Tracks fileReads counter (incremented on each read_file call) and accumulatedInputTokens
+- Soft cap: when fileReads >= agent_max_files, prints summary and prompts 'Continue reading? [y/N]'; 'n' returns partialConcepts
+- Hard stop: when accumulatedInputTokens > agent_max_context_tokens, returns partialConcepts immediately
+- **Learnings for future iterations:**
+  - openai v6 tool calls are a union type (function | custom); must check toolCall.type !== 'function' before accessing toolCall.function
+  - messages.push(message) won't type-check directly; build assistant message explicitly: { role: 'assistant', content, tool_calls }
+  - getToolDefinitions() returns ToolDefinition[] (custom interface) — needs `as unknown as ChatCompletionTool[]` cast to use with openai client
+  - partialConcepts starts empty; only populated when finish() is called — interruption cases return []
+---
+
 ## 2026-06-12 - US-027
 - Created src/agent/tools.ts with five tool handlers: list_directory, glob_files, read_file, search_text, read_schema
 - Exported getToolDefinitions() returning OpenAI-compatible tool definition array
