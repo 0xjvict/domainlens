@@ -1,4 +1,4 @@
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -9,8 +9,7 @@ let cached: EmbeddingPipeline | null = null;
 export async function loadModel(): Promise<EmbeddingPipeline> {
   if (cached) return cached;
   const cacheDir = path.join(os.homedir(), '.domainlens', 'models');
-  // env.cacheDir is mutable at runtime; the d.ts exposes it as a re-exported const
-  (env as unknown as { cacheDir: string }).cacheDir = cacheDir;
+  env.cacheDir = cacheDir;
 
   let downloading = false;
 
