@@ -10,3 +10,12 @@
 - MCP server: src/mcp/server.ts exposes search_schema, search_semantic, list_skills, get_skill via stdio transport
 
 ---
+
+## 2026-06-12 - US-026
+- Added Signal and AgentConcept interfaces to src/types.ts
+- Added explorer_model, agent_max_files, agent_max_context_tokens to DomainLensConfig type
+- Updated DEFAULT_CONFIG in src/commands/init.ts to include explorer_model ('anthropic/claude-sonnet-4-6'), agent_max_files (150), agent_max_context_tokens (100000)
+- **Learnings for future iterations:**
+  - Types are the foundation — US-027 onward can import AgentConcept/Signal from types.ts
+  - init.ts DEFAULT_CONFIG is the single source of truth for all config.json defaults
+---
