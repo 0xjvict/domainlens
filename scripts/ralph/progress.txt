@@ -32,3 +32,21 @@ Started: Fri Jun 12 17:57:28 -03 2026
   - The schema.ts dispatcher pattern keeps the entry point stable while allowing driver-specific implementations
   - `new URL(dbUrl).protocol` is a reliable parser for connection URL protocol detection
 ---
+
+## 2026-06-12 - US-106
+- Created `src/extractors/schemaPostgres.ts` — extracted all PostgreSQL-specific extraction logic unchanged
+- Created `src/extractors/schemaMysql.ts` — MySQL schema scanner using mysql2/promise:
+  - Tables via `information_schema.tables WHERE table_schema = DATABASE()`
+  - Columns with comments via `information_schema.columns.COLUMN_COMMENT`
+  - PK/FK/CHECK/UNIQUE via `information_schema.table_constraints` + joins
+  - Indexes via `SHOW INDEX FROM`
+  - Enums parsed from `COLUMN_TYPE LIKE 'enum(%'` with regex value extraction
+  - Schema name via `SELECT DATABASE()`
+- Rewrote `src/extractors/schema.ts` as a pure dispatcher using `inferDbType()`
+- Files changed: src/extractors/schema.ts, src/extractors/schemaPostgres.ts (new), src/extractors/schemaMysql.ts (new)
+- **Learnings for future iterations:**
+  - The SHOW INDEX FROM statement cannot use parameterized table names — must use backtick interpolation
+  - MySQL ENUM types are inline in COLUMN_TYPE not separate system catalog entries
+  - mysql2/promise uses `connection.query()` returning `[rows, fields]` — different from pg's `client.query()` returning `{ rows }`
+  - `information_schema.COLUMNS.COLUMN_COMMENT` replaces `pg_catalog.col_description()` for MySQL
+---
