@@ -24,13 +24,15 @@ export async function runAgent(
   const agentMaxFiles = config.agent_max_files ?? 150;
   const agentMaxContextTokens = config.agent_max_context_tokens ?? 100000;
 
+  const MIN_FILE_READS = 5;
+
   const client = new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey,
   });
 
   const schemaJson = readSchemaJson(projectPath);
-  const systemPrompt = buildSystemPrompt(config, existingSkills, schemaJson);
+  const systemPrompt = buildSystemPrompt(config, existingSkills, schemaJson, MIN_FILE_READS);
   const tools = buildAllTools();
   const toolHandlers = createToolHandlers(config, projectPath);
 
@@ -42,13 +44,18 @@ export async function runAgent(
   let fileReads = 0;
   let accumulatedInputTokens = 0;
   const partialConcepts: AgentConcept[] = [];
+  let iterationCount = 0;
+  const MAX_ITERATIONS = 100;
+  const MAX_CONSECUTIVE_TEXT = 2;
+  let consecutiveTextResponses = 0;
 
-  while (true) {
-    const response = await client.chat.completions.create({
-      model,
-      messages,
-      tools,
-    });
+  try {
+  while (iterationCount < MAX_ITERATIONS) {
+    iterationCount++;
+
+    const response = await callWithRetry(() =>
+      client.chat.completions.create({ model, messages, tools })
+    );
 
     accumulatedInputTokens += response.usage?.prompt_tokens ?? 0;
 
@@ -62,8 +69,18 @@ export async function runAgent(
     });
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
+      if (fileReads < MIN_FILE_READS && consecutiveTextResponses < MAX_CONSECUTIVE_TEXT) {
+        consecutiveTextResponses++;
+        messages.push({
+          role: 'user',
+          content: buildRePrompt(fileReads),
+        });
+        continue;
+      }
       break;
     }
+
+    consecutiveTextResponses = 0;
 
     const toolResults: OpenAI.Chat.ChatCompletionToolMessageParam[] = [];
 
@@ -105,7 +122,7 @@ export async function runAgent(
       console.log(
         `\n⚠ Context limit exceeded (${accumulatedInputTokens.toLocaleString()} tokens). Stopping exploration.`
       );
-      return partialConcepts;
+      return await forceSummarize(client, model, messages, tools, fileReads);
     }
 
     if (fileReads >= agentMaxFiles) {
@@ -114,13 +131,89 @@ export async function runAgent(
       );
       const shouldContinue = await promptYesNo('Continue reading? [y/N]: ');
       if (!shouldContinue) {
-        return partialConcepts;
+        return await forceSummarize(client, model, messages, tools, fileReads);
       }
       fileReads = 0;
     }
   }
 
-  return partialConcepts;
+  return await forceSummarize(client, model, messages, tools, fileReads);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`\n✗ Agent error: ${msg}`);
+    console.log('  Attempting to summarize concepts discovered so far...');
+    return await forceSummarize(client, model, messages, tools, fileReads);
+  }
+}
+
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 4,
+  baseDelayMs = 5000
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? (err as { statusCode?: number }).statusCode;
+      if (status === 429 && attempt < maxRetries) {
+        const delay = baseDelayMs * 2 ** attempt;
+        console.log(`\n  ⏳ Rate limited (429). Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('unreachable');
+}
+
+async function forceSummarize(
+  client: OpenAI,
+  model: string,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  tools: OpenAI.Chat.ChatCompletionTool[],
+  fileReads: number
+): Promise<AgentConcept[]> {
+  if (fileReads === 0) return [];
+
+  try {
+    const summarizeMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      ...messages,
+      {
+        role: 'user',
+        content:
+          'You have finished exploring. Now call finish() with all the domain concepts you discovered from the files you read.',
+      },
+    ];
+
+    const response = await client.chat.completions.create({
+      model,
+      messages: summarizeMessages,
+      tools,
+      tool_choice: { type: 'function', function: { name: 'finish' } },
+    });
+
+    const message = response.choices[0]?.message;
+    if (!message?.tool_calls) return [];
+
+    for (const toolCall of message.tool_calls) {
+      if (toolCall.type !== 'function' || toolCall.function.name !== 'finish') continue;
+      let args: Record<string, unknown>;
+      try {
+        args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+      const concepts = parseFinishArgs(args);
+      console.log(`  → finish() (forced) — ${concepts.length} concepts`);
+      return concepts;
+    }
+  } catch {
+    // forced summarize failed — return empty rather than crash
+  }
+
+  return [];
 }
 
 function buildAllTools(): OpenAI.Chat.ChatCompletionTool[] {
@@ -183,7 +276,8 @@ function readSchemaJson(projectPath: string): string {
 function buildSystemPrompt(
   config: DomainLensConfig,
   existingSkills: string[],
-  schemaJson: string
+  schemaJson: string,
+  minFileReads: number
 ): string {
   const skillsList =
     existingSkills.length > 0
@@ -208,11 +302,26 @@ ${codePathsList}
 ${ignoreList}
 
 ## Instructions
-1. Use the available tools to explore the codebase systematically.
-2. Look for domain concepts in: database tables, ORM models, constants, enums, documentation, and business logic.
-3. For each concept, identify: its name, a business definition, and the signals (evidence) you found.
-4. When you have finished exploring, call finish() with your complete list of discovered concepts.
-5. Focus on business meaning, not technical implementation details.`;
+1. Use list_directory to understand the project structure, then read actual source code files with read_file — listing directories alone is NOT enough to discover concepts.
+2. Use glob_files to find patterns like **/*.php, **/*.py, **/*.ts, **/*.js, **/*.java to locate source files.
+3. When you find source files (models, services, controllers, entities), read them with read_file to extract:
+   - ORM model definitions, fields, and relationships
+   - Business constants and threshold values (e.g. CHURN_DAYS, PREMIUM_THRESHOLD)
+   - Enum values and status types
+   - Business scopes and query filters
+4. For each concept you find, track: its name, a business definition, and the signals (evidence) you found.
+5. Only call finish() after you have read at least ${minFileReads} source files and thoroughly explored the codebase.
+6. Focus on business meaning, not technical implementation details.
+7. DO NOT stop early — keep exploring until you have a solid understanding of the domain.`;
+}
+
+function buildRePrompt(fileReads: number): string {
+  return `You stopped responding with tool calls, but you have only read ${fileReads} source file(s). You need to read actual source code files to discover domain concepts. Please continue exploring:
+
+- Use list_directory to find directories with source code
+- Use glob_files to find source files (*.php, *.py, *.ts, *.js, etc.)
+- Use read_file to examine file contents — look for models, constants, enums, business logic
+- Only call finish() when you have thoroughly explored the codebase and found all domain concepts`;
 }
 
 function parseFinishArgs(args: Record<string, unknown>): AgentConcept[] {
