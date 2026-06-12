@@ -1,0 +1,12 @@
+## Codebase Patterns
+- Build: `npm run typecheck` (tsc --noEmit) is the quality gate — no test suite exists
+- Module system: ESM (`"type": "module"` in package.json) — all imports must use `.js` extension even for `.ts` source files
+- Config: DomainLensConfig read from `.domainlens/config.json` in project root; projectPath always resolved to absolute path
+- OpenRouter LLM: src/llm/openrouter.ts wraps openai npm package with custom baseURL; uses llm_key_env from config to resolve env var name → actual key
+- Skills on disk: `<projectPath>/skills/domain/*.md` and `<projectPath>/skills/rules/*.md`
+- Frontmatter parsing: src/utils/frontmatter.ts handles YAML frontmatter in skill files
+- ORM scanner: src/extractors/ormScanner.ts auto-detects Prisma/Django/Laravel by indicator files; config.orm overrides detection; Laravel model path is configurable via config.laravel_model_paths (array, default ["app/Models"])
+- Embedding DB: SQLite at `.domainlens/embeddings.db` using sqlite-vec extension; embeddings/embed.ts manages incremental hash-based updates
+- MCP server: src/mcp/server.ts exposes search_schema, search_semantic, list_skills, get_skill via stdio transport
+
+---

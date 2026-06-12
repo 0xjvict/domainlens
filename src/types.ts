@@ -2,12 +2,27 @@ export interface DomainLensConfig {
   db_url_env: string;
   llm_key_env: string;
   llm_model: string;
+  explorer_model?: string;
+  agent_max_files?: number;
+  agent_max_context_tokens?: number;
   code_paths: string[];
   docs_paths: string[];
   ignore: string[];
   orm?: string;
   laravel_model_paths?: string[];
   laravel_base_models?: string[];
+}
+
+export interface Signal {
+  type: string;
+  value: string;
+  file?: string;
+}
+
+export interface AgentConcept {
+  concept: string;
+  definition: string;
+  signals: Signal[];
 }
 
 export interface ColumnInfo {
