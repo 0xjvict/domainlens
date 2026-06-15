@@ -51,19 +51,30 @@ async function runMultiSession(
   }
 
   const totalBatches = fileGroups.length;
-  const batchResults: AgentConcept[][] = [];
+  const concurrency = config.agent_parallel_sessions ?? 3;
 
-  for (let i = 0; i < totalBatches; i++) {
-    const batch = fileGroups[i];
-    console.log(`▶ Phase 2: Exploring batch ${i + 1}/${totalBatches} (${batch.length} files)...`);
-    const batchConcepts = await runSingleSession(
-      config,
-      projectPath,
-      existingSkills,
-      { ...options, file_filter: batch }
-    );
-    batchResults.push(batchConcepts);
-  }
+  console.log(`▶ Phase 2: Exploring ${totalBatches} batches (up to ${concurrency} parallel)...`);
+
+  const batchResults: AgentConcept[][] = new Array(totalBatches);
+  let nextIndex = 0;
+
+  const runWorker = async () => {
+    while (nextIndex < totalBatches) {
+      const i = nextIndex++;
+      const batch = fileGroups[i];
+      const batchConcepts = await runSingleSession(
+        config,
+        projectPath,
+        existingSkills,
+        { ...options, file_filter: batch }
+      );
+      batchResults[i] = batchConcepts;
+      console.log(`  ✓ Batch ${i + 1}/${totalBatches} — ${batchConcepts.length} concepts found`);
+    }
+  };
+
+  const poolSize = Math.min(concurrency, totalBatches);
+  await Promise.all(Array.from({ length: poolSize }, () => runWorker()));
 
   console.log('▶ Phase 3: Consolidating results...');
   const consolidated = consolidateConcepts(batchResults);

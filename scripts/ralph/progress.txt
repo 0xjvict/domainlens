@@ -271,3 +271,18 @@
   - The comment block above DEFAULT_CONFIG is the single source of truth for field documentation
   - agent_parallel_sessions defaults to 3, consistent with the PRD spec
 ---
+
+## 2026-06-15 16:45 - US-019
+- Replaced sequential Phase 2 sub-agent loop with a concurrency pool in runMultiSession()
+- Pool uses a simple inline semaphore pattern: Math.min(concurrency, totalBatches) workers pull from a shared index
+- Concurrency capped by config.agent_parallel_sessions (default 3)
+- Progress output updated: '▶ Phase 2: Exploring N batches (up to X parallel)...' and per-batch '  ✓ Batch 2/5 — 7 concepts found'
+- 429 rate limit handling preserved per sub-session (callWithRetry unchanged)
+- No new dependencies — uses Promise.all with async workers instead of p-limit
+- Files changed: src/agent/runner.ts
+- **Learnings for future iterations:**
+  - Simple inline semaphore (workers pulling from shared index) avoids external dependency while achieving the same result as p-limit
+  - batchResults is pre-allocated as `new Array(totalBatches)` and assigned by index to maintain deterministic ordering
+  - The concurrency pool size is `Math.min(concurrency, totalBatches)` to avoid starting more workers than needed
+  - Each worker runs independently, so per-session 429 retries via callWithRetry are naturally preserved
+---
