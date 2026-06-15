@@ -2,6 +2,12 @@
 # Started: 2026-06-15
 # Stories: 12
 
+## Codebase Patterns
+- Frontmatter: `parseFrontmatter` returns `Record<string, string>`; array fields (tags, related_concepts, enforced_in) use bracket format `[a, b]` parsed via `parseTags`
+- Section extraction: `extractSection(body, 'SectionName')` regex `## SectionName\n(content)(?=\n## |\n---|$)` works across all skill file types
+- Relations.md parsing: split on `\n(?=## )` for top-level sections; `### Name` for sub-sections within Concept Relations and Cross-Concept Rules
+- MCP tool pattern: `server.tool(name, description, { params }, handler)` always returns `{ content: [{ type: 'text', text: JSON.stringify(...) }] }`
+
 ## 2026-06-15 15:00 - US-001
 - Added rules_paths, rules_batch_size, watch_interval_seconds to DomainLensConfig type
 - Added new fields to init command defaults and gitignore
@@ -13,3 +19,83 @@
   - The skills directory structure must be kept in sync across types.ts (config shape), init.ts (defaults), rulesSkills.ts (output paths), and status.ts (counting)
   - Type `technical_rule` in frontmatter replaces the old `rules` type — any MCP tooling that filters by type must be updated too
 ---
+
+## 2026-06-15 15:40 - US-002
+- Created src/llm/preScan.ts with preScanConcepts() — sends file tree + schema summary + existing concepts to LLM, returns JSON array of implicit concept names
+- Created mergeConcepts() in preScan.ts — normalizes names, keeps heuristic-signaled concepts, adds LLM-only concepts with source: ai-inferred and signals: []
+- Integrated pre-scan as step 2/7 in discover pipeline (suppressed by --no-enrich)
+- Merge happens in step 6/7 (inference), feeding merged list to enrichment
+- Updated getExistingDomainAndRuleNames to scan both domain and business_rule directories for agent context filtering
+- Files changed: src/llm/preScan.ts (new), src/commands/discover.ts
+- **Learnings for future iterations:**
+  - The preScan file tree builder should be kept in sync with config.ignore — both code_paths and ignore are used
+  - LLM pre-scan uses response_format: json_object which forces JSON output from OpenRouter-compatible models
+  - mergeConcepts returns MergedConcept[] with source field; this is structurally compatible with DomainConcept for generateDomainSkills
+---
+
+## 2026-06-15 16:00 - US-004
+- Created src/extractors/businessRules.ts with:
+  - detectCandidates() — walks rules_paths, scores files by business keyword density × conditional count
+  - extractBusinessRules() — batches candidates (rules_batch_size), sends to LLM with response_format: json_object, merges duplicates by name with accumulated enforced_in
+- Created src/skills/businessRulesSkills.ts with:
+  - generateBusinessRulesSkills() — calls enrichBusinessRule() per unique rule, writes .md to skills/rules/business/ with frontmatter (name, type: business_rule, tags, source, related_concepts, enforced_in)
+  - Re-execution appends ## Detected Changes
+- Added BusinessRule interface to src/types.ts
+- Integrated into discover pipeline as Step 8/8 after domain skills generation
+- Updated step numbering (1/7→1/8 through 7/7→7/8, added 8/8)
+- Files changed: src/types.ts, src/extractors/businessRules.ts (new), src/skills/businessRulesSkills.ts (new), src/commands/discover.ts
+- **Learnings for future iterations:**
+  - Business rule frontmatter includes `related_concepts` and `enforced_in` as arrays — this is the authoritative source for US-006's get_rules_for_concept filtering
+  - extractBusinessRules uses response_format: json_object which requires the LLM to return {"rules": [...]} — the SDK auto-parses the JSON
+  - detectCandidates score = conditionalCount × businessKeywordCount; files with < 2 conditionals are excluded
+  - The `rulesResult` object is mutated (created/updated/enriched aggregated) since it's the shared counter for all skill types
+  - When rules_paths yields no candidates, extraction is silently skipped with a log message
+  - All new files follow existing patterns: no comments, consistent import style, fs operations guarded by dryRun
+---
+
+## 2026-06-15 15:42 - US-003
+- Replaced enrichConcept with enrichDomainConcept and enrichBusinessRule in src/llm/openrouter.ts
+- enrichDomainConcept uses structured prompt (Definition, States & Lifecycle, Business Rules, Related Concepts, Common Query Patterns), max_tokens 1500, returns content + semantically-derived tags
+- enrichBusinessRule uses structured prompt (Rule Description, Trigger, Conditions, Effect, Where Enforced), max_tokens 1500
+- Added getProjectContext helper that reads package.json for stack detection
+- Updated domainSkills.ts to use enrichDomainConcept, output v2 markdown with 5 sections + Detected Signals
+- Updated rulesSkills.ts to use enrichDomainConcept instead of removed enrichConcept
+- Domain skills without LLM enrichment generate skeleton with all 5 TODO sections
+- Files changed: src/llm/openrouter.ts, src/skills/domainSkills.ts, src/skills/rulesSkills.ts
+- **Learnings for future iterations:**
+  - enrichDomainConcept returns structured { content, tags } — the content is raw markdown sections, tags are parsed from the "Tags:" line in the LLM response
+  - Fallback tags still use deriveTagsFromSignals when LLM enrichment fails or is skipped
+  - The `DomainEnrichResult` type is reusable by business rules and other enrichment callers
+---
+
+## 2026-06-15 16:30 - US-005
+- Created src/skills/relationsSkills.ts with generateRelationsMap() that:
+  - Reads all skills/domain/*.md and skills/rules/business/*.md
+  - Parses frontmatter (name, tags, related_concepts, source) and section content (Definition, Related Concepts, Rule Description)
+  - Generates 4 sections: Domain Map (table), Concept Relations (per-concept with inferred links from shared tags + rules), Cross-Concept Rules (rules with >=2 related_concepts), Entry Points (top-5 by connection count)
+  - Fully regenerated each time; skips if frontmatter has source: human
+- Integrated into discover pipeline after business rules extraction
+- Files changed: src/skills/relationsSkills.ts (new), src/commands/discover.ts
+- **Learnings for future iterations:**
+  - relations.md uses source: human frontmatter as a skip mechanism — used by business rules and domain skills too
+  - Frontmatter parser handles both simple values and array formats ([a, b, c]) — shared across domain, business_rule, and domain_map types
+  - Section extraction uses pattern `## SectionName\n(content)(?=\n## |\n---|$)` — works across all skill file types
+  - Concept Relations come from 3 sources: explicit Related Concepts sections, business rules' related_concepts frontmatter, and shared tags between concepts
+  - Relations file at skills/domain/relations.md follows the convention that domain relations belong under the domain directory
+---
+
+## 2026-06-15 16:45 - US-006
+- Added `get_concept` tool: searches skills/domain/, parses frontmatter and 5 enrichment sections, returns structured { name, type, source, tags, sections } or { name, found: false }
+- Added `get_rules_for_concept` tool: scans skills/rules/business/, filters by related_concepts frontmatter, returns array of matching rules with parsed sections
+- Added `get_relations` tool: reads skills/domain/relations.md, extracts concept-specific direct_relations and cross_concept_rules from the 4-section structure
+- Added `extractSection()` helper to server.ts for section extraction from skill files
+- Changed `parseFrontmatter` return type from explicit to `Record<string, string>` to allow dynamic access to fields like `related_concepts` and `enforced_in`
+- Files changed: src/mcp/server.ts, src/utils/frontmatter.ts
+- **Learnings for future iterations:**
+  - Section extraction regex `## SectionName\n(content)(?=\n## |\n---|$)` works across all skill file types (domain, business_rule) — reusable pattern for MCP tools
+  - Business rule frontmatter stores `related_concepts` and `enforced_in` as bracket arrays `[a, b, c]` — parseTags handles this format
+  - Relations.md parsing: split on `\n(?=## )` gives individual sections; `### Name` sub-headings nest within sections
+  - The `list_skills` tool does NOT search recursively into skills/rules/business/ — only reads skills/rules/ top-level
+---
+
+

@@ -1,6 +1,6 @@
 export function parseFrontmatter(
   content: string,
-): { name?: string; type?: string; tags?: string; source?: string } {
+): Record<string, string> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
   const fm: Record<string, string> = {};
