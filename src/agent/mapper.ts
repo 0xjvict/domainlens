@@ -16,7 +16,7 @@ export async function buildFileGroups(
   try {
     const llmPaths = await attemptLlmMapping(config, projectPath);
     if (llmPaths.length > 0) {
-      return partitionIntoGroups(llmPaths, agentBatchSize, projectPath);
+      return partitionIntoGroups(llmPaths, agentBatchSize, projectPath, config.code_paths);
     }
   } catch {
     // fall through to walkdir grouping
@@ -170,18 +170,34 @@ function buildMappingTools(): OpenAI.Chat.ChatCompletionTool[] {
     .map((t) => t as unknown as OpenAI.Chat.ChatCompletionTool);
 }
 
+function computeGroupKey(relativePath: string, codePaths: string[]): string {
+  for (const cp of codePaths) {
+    const normalizedCp = cp.replace(/\/$/, '');
+    if (!relativePath.startsWith(normalizedCp + '/') && relativePath !== normalizedCp) continue;
+
+    const remainder = relativePath.slice(normalizedCp.length + (relativePath === normalizedCp ? 0 : 1));
+    if (!remainder || !remainder.includes('/')) {
+      return normalizedCp;
+    }
+    const firstSegment = remainder.split('/')[0];
+    return normalizedCp + '/' + firstSegment;
+  }
+
+  const parts = relativePath.split(/[/\\]/);
+  return parts.length > 1 ? parts.slice(0, 2).join('/') : parts[0];
+}
+
 function partitionIntoGroups(
   filePaths: string[],
   batchSize: number,
-  projectPath: string
+  projectPath: string,
+  codePaths: string[]
 ): string[][] {
   const groups = new Map<string, string[]>();
 
   for (const fp of filePaths) {
     const relative = path.relative(projectPath, path.resolve(projectPath, fp));
-    const parts = relative.split(/[/\\]/);
-    // Use the first subdirectory of the first code path segment as group key
-    const key = parts.length > 1 ? parts.slice(0, 2).join('/') : parts[0];
+    const key = computeGroupKey(relative, codePaths);
 
     if (!groups.has(key)) {
       groups.set(key, []);
@@ -189,7 +205,6 @@ function partitionIntoGroups(
     groups.get(key)!.push(fp);
   }
 
-  // Split oversized groups into batches
   const result: string[][] = [];
   for (const [, group] of groups) {
     if (group.length <= batchSize) {
@@ -214,8 +229,7 @@ function buildFallbackGroups(
 
   for (const fp of allFiles) {
     const relative = path.relative(projectPath, path.resolve(projectPath, fp));
-    const parts = relative.split(/[/\\]/);
-    const key = parts.length > 1 ? parts.slice(0, 2).join('/') : parts[0];
+    const key = computeGroupKey(relative, config.code_paths);
 
     if (!groups.has(key)) {
       groups.set(key, []);

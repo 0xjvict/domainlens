@@ -298,3 +298,18 @@
   - MCP tools need a two-phase lookup: filename match first, frontmatter scan as fallback for backward compat
   - parseConceptFile helper extraction avoided code duplication in get_concept's filename + frontmatter phases
 ---
+
+## 2026-06-15 17:00 - US-021
+- Added computeGroupKey() to src/agent/mapper.ts that derives group key relative to code_path, not projectPath
+- partitionIntoGroups and buildFallbackGroups both use the new function
+- Flat files directly under a code_path (e.g. src/Order.ts) are grouped under the code_path itself
+- Deep paths (e.g. src/domain/Order/) include the first subdirectory segment as part of the key
+- Files not matching any code_path fall back to the original first-two-segments logic
+- Oversized groups still split by agent_batch_size
+- Files changed: src/agent/mapper.ts
+- **Learnings for future iterations:**
+  - computeGroupKey iterates code_paths in order; first match wins
+  - The normalizedCp variable strips trailing slash for consistent prefix matching
+  - Flat file detection: if the remainder after stripping code_path has no '/' separator, all such files collapse into the code_path group
+  - The caller partitionIntoGroups now needs config.code_paths as a 4th parameter
+---

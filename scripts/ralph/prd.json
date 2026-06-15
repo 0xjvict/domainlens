@@ -344,7 +344,7 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -376,6 +376,36 @@
         "Typecheck passes"
       ],
       "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Fix getExploredDirs to track requested paths from tool_calls, not tool results",
+      "description": "As a DomainLens developer, I want the early-exit check in the mapping phase to correctly detect when all code_paths have been explored, so the LLM mapping session terminates as soon as coverage is complete instead of always running all MAPPING_MAX_ITERATIONS iterations.",
+      "acceptanceCriteria": [
+        "getExploredDirs in src/agent/mapper.ts reads the path argument from assistant tool_calls where function name is 'list_directory', instead of parsing 'dir  name' lines from tool result content",
+        "Implementation iterates messages where role === 'assistant', checks tool_calls array, extracts args.path for list_directory calls",
+        "allCodePathsCovered check correctly matches explored paths against config.code_paths (e.g. 'src/' matches when 'src/' or 'src/domain' was requested)",
+        "When all code_paths are covered and filePaths.size > 0, the mapping loop breaks early instead of running remaining iterations",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Fix mergeDefinition signal count comparison in consolidator",
+      "description": "As a DomainLens user, I want the consolidation phase to correctly pick the richer definition when two sub-agents discover the same concept, so that the concept with more evidence wins instead of always keeping the first-seen definition.",
+      "acceptanceCriteria": [
+        "In consolidateConcepts in src/agent/consolidator.ts, capture existing.signals.length into a local variable before calling mergeSignals()",
+        "mergeDefinition receives the pre-merge existing signal count (or is refactored to receive it) so the comparison 'incoming.signals.length > originalExistingCount' is correct",
+        "Sub-agent A finds Order with 3 signals, sub-agent B finds Order with 8 signals — after consolidation, the definition from sub-agent B is used",
+        "When counts are equal after comparison, existing definition is kept (no change in behavior)",
+        "Typecheck passes"
+      ],
+      "priority": 25,
       "passes": false,
       "notes": ""
     }
