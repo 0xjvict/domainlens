@@ -346,3 +346,13 @@
   - Reading from tool_calls arguments is more reliable since it captures the agent's intent before any formatting or truncation
   - The existing allCodePathsCovered logic still works correctly with the new implementation since it checks if explored dirs start with code_path prefixes
 ---
+
+## 2026-06-15 18:00 - US-025
+- Fixed mergeDefinition signal count comparison: captures existing.signals.length before mergeSignals() mutates it
+- mergeDefinition now receives pre-merge count as third parameter, so incoming signals are compared against the original count
+- Sub-agent with more signal evidence now correctly wins the definition choice
+- Files changed: src/agent/consolidator.ts
+- **Learnings for future iterations:**
+  - mergeSignals() mutates existing.signals in place — any signal comparison after the merge call is contaminated
+  - The fix pattern: snapshot the length before mutation, pass it to the comparison function
+---

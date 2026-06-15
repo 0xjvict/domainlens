@@ -20,6 +20,7 @@ export function consolidateConcepts(batches: AgentConcept[][]): AgentConcept[] {
         continue;
       }
 
+      const existingSignalCount = existing.signals.length;
       mergeSignals(existing, concept.signals);
 
       if (concept.related_concepts) {
@@ -34,7 +35,7 @@ export function consolidateConcepts(batches: AgentConcept[][]): AgentConcept[] {
         mergeArrayField(existing, 'business_rules', concept.business_rules);
       }
 
-      mergeDefinition(existing, concept);
+      mergeDefinition(existing, concept, existingSignalCount);
     }
   }
 
@@ -68,8 +69,8 @@ function mergeArrayField<K extends 'states' | 'business_rules' | 'related_concep
   }
 }
 
-function mergeDefinition(existing: AgentConcept, incoming: AgentConcept): void {
-  if (incoming.signals.length > existing.signals.length) {
+function mergeDefinition(existing: AgentConcept, incoming: AgentConcept, existingSignalCount: number): void {
+  if (incoming.signals.length > existingSignalCount) {
     if (isSubstantiallyDifferent(existing.definition, incoming.definition)) {
       incoming.definition += `\n\nAlternate definition: ${existing.definition}`;
     }

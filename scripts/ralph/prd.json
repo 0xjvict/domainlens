@@ -406,7 +406,7 @@
         "Typecheck passes"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -438,6 +438,22 @@
         "Typecheck passes"
       ],
       "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Fix --agent mode missing business rules extraction and relations synthesis",
+      "description": "As a DomainLens user running discover --agent, I want business rules to be extracted and relations.md to be generated after agent exploration, so that --agent produces the same complete output as the standard pipeline instead of only domain skills.",
+      "acceptanceCriteria": [
+        "runDiscoverAgent in src/commands/discover.ts calls detectCandidates + extractBusinessRules + generateBusinessRulesSkills after generateDomainSkills, mirroring the equivalent steps from runDiscoverStandard",
+        "runDiscoverAgent calls generateRelationsMap after business rules generation",
+        "file-concept-map update in runDiscoverAgent includes business rule entries (rule.name + enforced_in files), not only domain concept signals",
+        "Progress output shows the new steps with correct step numbering",
+        "Final summary line includes business rule counts alongside domain skill counts",
+        "Typecheck passes"
+      ],
+      "priority": 28,
       "passes": false,
       "notes": ""
     }
