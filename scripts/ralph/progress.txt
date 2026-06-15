@@ -130,6 +130,25 @@
   - Deduplication uses `${name}:${type}` as the unique key to prevent duplicates when the same file triggers multiple signals for the same concept
 ---
 
+## 2026-06-15 17:30 - US-009
+- Created src/commands/incremental.ts with runIncrementalRebuild() function
+- detectChangedFiles() runs git diff HEAD --name-only + git ls-files --others --exclude-standard
+- isGitAvailable() checks git presence, logs ⚠ fallback message if unavailable
+- findAffectedConcepts() cross-references changed files with file-concept-map
+- Selective re-enrichment calls enrichDomainConcept for domain concepts and enrichBusinessRule for business_rule concepts
+- Deleted source files: appendDeletedSource() appends 'source file deleted' to ## Detected Changes
+- Regenerates relations.md if any concept was updated
+- Re-embeds via embedAll() (hash-based incremental handled by embedding pipeline)
+- ---no-enrich and --dry-run flags supported
+- Files changed: src/commands/incremental.ts (new)
+- **Learnings for future iterations:**
+  - The Signal type from heuristics.ts has a strict SignalType union — use type assertion for dynamically constructed signals
+  - Business rule re-enrichment requires extracting description, trigger, conditions, effect from the existing .md file sections
+  - Domain concept re-enrichment uses signals built from changed file paths as evidence
+  - appendDetectedChanges appends a new ## Detected Changes section to the end of the file (doesn't modify existing ones)
+  - The git commands use cwd: gitDir (relative to projectPath) for correct git-relative paths
+---
+
 
 
 
