@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { runInit } from './commands/init.js';
 import { runDiscover } from './commands/discover.js';
+import { runWatch } from './commands/watch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(
@@ -52,6 +53,23 @@ program
       embeddings: opts.embeddings,
       project: opts.project,
     }).catch(errExit);
+  });
+
+program
+  .command('watch')
+  .description('Watch for file changes and incrementally update skills')
+  .option('--no-enrich', 'Skip LLM enrichment on detected changes')
+  .option('--dry-run', 'Preview changes without modifying files')
+  .option('--project <path>', 'Path to the project (default: current directory)')
+  .action((opts) => {
+    runWatch({
+      noEnrich: opts.enrich === false,
+      dryRun: opts.dryRun,
+      project: opts.project,
+    }).catch((err: unknown) => {
+      console.error('Error:', err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    });
   });
 
 const modelsCmd = program.command('models').description('Manage embedding models');

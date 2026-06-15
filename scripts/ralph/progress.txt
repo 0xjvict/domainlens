@@ -149,6 +149,17 @@
   - The git commands use cwd: gitDir (relative to projectPath) for correct git-relative paths
 ---
 
-
-
-
+## 2026-06-15 12:14 - US-010
+- Created src/commands/watch.ts with runWatch() — polling loop that calls runIncrementalRebuild() every `watch_interval_seconds` (default 30s)
+- Each cycle prints timestamp, cycle number, changed files, affected concepts, enrichment/deletion results, relations regeneration
+- Try/catch around each cycle for graceful error handling: failed cycles log the error and continue
+- Supports --no-enrich and --dry-run flags passed through to runIncrementalRebuild
+- Registered `domainlens watch` command in cli.ts with --no-enrich, --dry-run, --project options
+- Chokidar not available as dependency — falls back to polling (the primary approach per PRD)
+- Files changed: src/commands/watch.ts (new), src/cli.ts
+- **Learnings for future iterations:**
+  - setInterval() works well for polling loops, but the first cycle runs immediately via direct await
+  - runIncrementalRebuild already handles all output formatting (changed files, concepts, enrichment, relations, embeddings) — watch just wraps it in a loop
+  - The watch command uses the same error handling pattern as other commands (try/catch + errExit)
+  - watch_interval_seconds defaults to 30 in init.ts DEFAULT_CONFIG, already aligned with config type
+---
