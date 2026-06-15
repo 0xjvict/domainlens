@@ -20,8 +20,9 @@ export async function extractSchemaPostgres(
 
   try {
     await client.connect();
-  } catch {
+  } catch (err) {
     console.log(`⚠ Database unreachable — skipping schema extraction`);
+    console.error(`  ${err}`);
     return loadExistingCache(projectPath);
   }
 

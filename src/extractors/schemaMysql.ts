@@ -23,8 +23,9 @@ export async function extractSchemaMysql(
   let connection: mysql.Connection | null = null;
   try {
     connection = await mysql.createConnection(dbUrl);
-  } catch {
+  } catch (err) {
     console.log(`⚠ Database unreachable — skipping schema extraction`);
+    console.error(`  ${err}`);
     return loadExistingCache(projectPath);
   }
 
