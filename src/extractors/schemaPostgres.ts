@@ -23,6 +23,10 @@ export async function extractSchemaPostgres(
   } catch (err) {
     console.log(`⚠ Database unreachable — skipping schema extraction`);
     console.error(`  ${err}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('invalid response') || msg.includes('4a')) {
+      console.log('  Hint: this may be a MySQL server. Set db_type: "mysql" in .domainlens/config.json');
+    }
     return loadExistingCache(projectPath);
   }
 

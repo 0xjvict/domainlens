@@ -420,7 +420,7 @@
         "Typecheck passes"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -454,6 +454,20 @@
         "Typecheck passes"
       ],
       "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Handle non-interactive stdin in agent file limit prompt",
+      "description": "As a DomainLens user running discover --agent in a non-interactive environment (CI, Docker, piped stdin), I want the file limit prompt to not hang indefinitely waiting for input that will never come, so the process terminates gracefully instead of blocking.",
+      "acceptanceCriteria": [
+        "In runSingleSession in src/agent/runner.ts, before calling promptYesNo, check process.stdin.isTTY",
+        "If stdin is not a TTY, skip the prompt, assume 'N' (do not continue), log: 'Non-interactive environment — stopping at file limit. Increase agent_max_files in config to explore more files.'",
+        "If stdin is a TTY, existing promptYesNo behavior is preserved",
+        "Typecheck passes"
+      ],
+      "priority": 29,
       "passes": false,
       "notes": ""
     }

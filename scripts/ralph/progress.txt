@@ -356,3 +356,13 @@
   - mergeSignals() mutates existing.signals in place — any signal comparison after the merge call is contaminated
   - The fix pattern: snapshot the length before mutation, pass it to the comparison function
 ---
+
+## 2026-06-15 18:15 - US-026
+- Added MySQL detection hint in extractSchemaPostgres catch block when error includes 'invalid response' or '4a'
+- Hint guides users to set db_type: "mysql" in config
+- Original error still logged for debugging; hint only appears for MySQL-related errors
+- Files changed: src/extractors/schemaPostgres.ts
+- **Learnings for future iterations:**
+  - The pg library throws "received invalid response: 4a" when connecting to MySQL — unique enough for reliable detection
+  - Error message strings from pg might vary by version; both 'invalid response' and '4a' are checked for robustness
+---
