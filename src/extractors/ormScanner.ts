@@ -44,9 +44,21 @@ export function detectOrm(projectRoot: string, config?: DomainLensConfig): OrmTy
     return 'django';
   }
 
-  // Laravel: scan configured model paths for PHP files extending a known Eloquent base
-  const modelPaths = config?.laravel_model_paths ?? ['app/Models'];
-  const baseModels = config?.laravel_base_models ?? ['Model'];
+  // Laravel: check composer.json for laravel/framework, or artisan file presence
+  const composerPath = path.join(projectRoot, 'composer.json');
+  if (fs.existsSync(composerPath)) {
+    const composerContent = readFileSafe(composerPath);
+    if (composerContent && /laravel\/(framework|lumen-framework)/.test(composerContent)) {
+      return 'laravel';
+    }
+  }
+  if (fs.existsSync(path.join(projectRoot, 'artisan'))) {
+    return 'laravel';
+  }
+
+  // Laravel fallback: scan model paths for PHP files extending a known Eloquent base
+  const modelPaths = config?.laravel_model_paths ?? config?.code_paths ?? ['app/Models', 'app'];
+  const baseModels = config?.laravel_base_models ?? ['Model', 'Eloquent'];
   const ignoreSet = new Set([...DETECT_IGNORE, ...(config?.ignore ?? [])]);
   const basePattern = new RegExp(`extends\\s+(${baseModels.map((b) => escapeRegExp(b)).join('|')})`);
 
@@ -78,8 +90,8 @@ export function scanOrm(
         : scanLaravel(
             projectRoot,
             config.ignore,
-            config.laravel_model_paths ?? ['app/Models'],
-            config.laravel_base_models ?? ['Model'],
+            config.laravel_model_paths ?? config.code_paths ?? ['app/Models', 'app'],
+            config.laravel_base_models ?? ['Model', 'Eloquent'],
           );
 
   return { orm, signals };

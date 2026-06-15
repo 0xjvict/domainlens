@@ -4,6 +4,7 @@ import mysql from 'mysql2/promise';
 import type { DomainLensConfig, SchemaCache, TableInfo, EnumType } from '../types.js';
 
 interface EnumColumnInfo {
+  schema: string;
   enumName: string;
   values: string[];
 }
@@ -28,22 +29,28 @@ export async function extractSchemaMysql(
   }
 
   try {
-    const [dbResult] = await connection.query<mysql.RowDataPacket[]>('SELECT DATABASE() AS db');
-    const dbName: string | null = (dbResult as { db: string | null }[])[0]?.db ?? null;
+    const databases = await getDatabases(connection);
 
-    const enumColumns = await extractEnumColumns(connection, dbName);
-    const enums: EnumType[] = enumColumns.map((ec) => ({
-      name: ec.enumName,
-      schema: dbName || '',
-      values: ec.values,
-    }));
+    const allTables: TableInfo[] = [];
+    const allEnums: EnumType[] = [];
 
-    const tables = await extractTables(connection, dbName, enumColumns);
+    for (const dbName of databases) {
+      const enumColumns = await extractEnumColumns(connection, dbName);
+      const enums: EnumType[] = enumColumns.map((ec) => ({
+        name: ec.enumName,
+        schema: ec.schema,
+        values: ec.values,
+      }));
+      allEnums.push(...enums);
+
+      const tables = await extractTables(connection, dbName, enumColumns);
+      allTables.push(...tables);
+    }
 
     const cache: SchemaCache = {
       extracted_at: new Date().toISOString(),
-      tables,
-      enums,
+      tables: allTables,
+      enums: allEnums,
     };
 
     const schemasDir = path.join(projectPath, '.domainlens', 'schemas');
@@ -60,6 +67,14 @@ export async function extractSchemaMysql(
   }
 }
 
+async function getDatabases(connection: mysql.Connection): Promise<string[]> {
+  const systemDbs = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
+  const [rows] = await connection.query<mysql.RowDataPacket[]>('SHOW DATABASES');
+  return (rows as { Database: string }[])
+    .map((r) => r.Database)
+    .filter((name) => !systemDbs.has(name));
+}
+
 function loadExistingCache(projectPath: string): SchemaCache | null {
   const cachePath = path.join(projectPath, '.domainlens', 'schemas', 'latest.json');
   if (fs.existsSync(cachePath)) {
@@ -70,23 +85,20 @@ function loadExistingCache(projectPath: string): SchemaCache | null {
 
 async function extractEnumColumns(
   connection: mysql.Connection,
-  dbName: string | null
+  dbName: string
 ): Promise<EnumColumnInfo[]> {
-  const schemaClause = dbName ? 'WHERE table_schema = ?' : '';
-  const params: string[] = dbName ? [dbName] : [];
-
   const [rows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT table_name, column_name, column_type
+    `SELECT table_schema, table_name, column_name, column_type
      FROM information_schema.columns
-     ${schemaClause}
-       AND column_type LIKE 'enum(%'`,
-    params
+     WHERE table_schema = ? AND column_type LIKE 'enum(%'`,
+    [dbName]
   );
 
-  const raw = rows as { table_name: string; column_name: string; column_type: string }[];
+  const raw = rows as { table_schema: string; table_name: string; column_name: string; column_type: string }[];
   return raw.map((r) => {
     const values = parseEnumValues(r.column_type);
     return {
+      schema: r.table_schema,
       enumName: `${r.table_name}.${r.column_name}`,
       values,
     };
@@ -108,19 +120,15 @@ function parseEnumValues(columnType: string): string[] {
 
 async function extractTables(
   connection: mysql.Connection,
-  dbName: string | null,
+  dbName: string,
   enumColumns: EnumColumnInfo[]
 ): Promise<TableInfo[]> {
-  const schemaClause = dbName ? 'WHERE table_schema = ?' : 'WHERE table_schema = DATABASE()';
-  const params: string[] = dbName ? [dbName] : [];
-
   const [rows] = await connection.query<mysql.RowDataPacket[]>(
     `SELECT table_name, table_schema
      FROM information_schema.tables
-     ${schemaClause}
-       AND table_type = 'BASE TABLE'
+     WHERE table_schema = ? AND table_type = 'BASE TABLE'
      ORDER BY table_schema, table_name`,
-    params
+    [dbName]
   );
 
   const raw = rows as { table_name: string; table_schema: string }[];
@@ -170,6 +178,7 @@ async function extractTableDetails(
      JOIN information_schema.key_column_usage kcu
        ON tc.constraint_name = kcu.constraint_name
        AND tc.table_schema = kcu.table_schema
+       AND tc.table_name = kcu.table_name
      WHERE tc.table_schema = ? AND tc.table_name = ?
        AND tc.constraint_type = 'PRIMARY KEY'
      ORDER BY kcu.ordinal_position`,
@@ -196,9 +205,16 @@ async function extractTableDetails(
     constraint_name: string;
   }[];
 
-  // Indexes via SHOW INDEX
+  // Indexes via information_schema.statistics (schema-qualified)
   const [idxRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SHOW INDEX FROM \`${tableName}\` WHERE Key_name != 'PRIMARY'`
+    `SELECT index_name AS Key_name,
+            column_name AS Column_name,
+            non_unique AS Non_unique,
+            seq_in_index AS Seq_in_index
+     FROM information_schema.statistics
+     WHERE table_schema = ? AND table_name = ? AND index_name != 'PRIMARY'
+     ORDER BY index_name, seq_in_index`,
+    [schema, tableName]
   );
   const idxRaw = idxRows as {
     Key_name: string;
@@ -215,24 +231,31 @@ async function extractTableDetails(
     indexMap.get(r.Key_name)!.columns.push(r.Column_name);
   }
 
-  // CHECK
-  const [checkRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT tc.constraint_name, cc.check_clause
-     FROM information_schema.table_constraints tc
-     JOIN information_schema.check_constraints cc
-       ON tc.constraint_name = cc.constraint_name AND tc.constraint_schema = cc.constraint_schema
-     WHERE tc.table_schema = ? AND tc.table_name = ?
-       AND tc.constraint_type = 'CHECK'`,
-    [schema, tableName]
-  );
-  const checkRaw = checkRows as { constraint_name: string; check_clause: string }[];
+  // CHECK (not supported in MySQL < 8.0.16 — skip gracefully)
+  let checkRaw: { constraint_name: string; check_clause: string }[] = [];
+  try {
+    const [checkRows] = await connection.query<mysql.RowDataPacket[]>(
+      `SELECT tc.constraint_name, cc.check_clause
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.check_constraints cc
+         ON tc.constraint_name = cc.constraint_name AND tc.constraint_schema = cc.constraint_schema
+       WHERE tc.table_schema = ? AND tc.table_name = ?
+         AND tc.constraint_type = 'CHECK'`,
+      [schema, tableName]
+    );
+    checkRaw = checkRows as { constraint_name: string; check_clause: string }[];
+  } catch {
+    // CHECK constraints not available in this MySQL version; skip
+  }
 
   // UNIQUE
   const [uniqueRows] = await connection.query<mysql.RowDataPacket[]>(
     `SELECT tc.constraint_name, kcu.column_name
      FROM information_schema.table_constraints tc
      JOIN information_schema.key_column_usage kcu
-       ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       ON tc.constraint_name = kcu.constraint_name
+       AND tc.table_schema = kcu.table_schema
+       AND tc.table_name = kcu.table_name
      WHERE tc.table_schema = ? AND tc.table_name = ?
        AND tc.constraint_type = 'UNIQUE'
      ORDER BY tc.constraint_name, kcu.ordinal_position`,
