@@ -29,6 +29,9 @@ export interface AgentConcept {
   concept: string;
   definition: string;
   signals: Signal[];
+  states?: string[];
+  business_rules?: string[];
+  related_concepts?: string[];
 }
 
 export interface ColumnInfo {

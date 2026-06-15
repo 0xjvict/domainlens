@@ -57,8 +57,8 @@ export async function generateDomainSkills(
       let tags: string[] = [];
       let source: string;
 
-      if (concept.definition) {
-        enrichedContent = concept.definition;
+      if (concept.definition || concept.skipEnrich) {
+        enrichedContent = concept.definition || '';
         source = 'ai-generated';
       } else if (canEnrich) {
         const result = await enrichDomainConcept(concept.concept, concept.signals, config, projectPath);

@@ -237,8 +237,23 @@ function buildFinishTool(): OpenAI.Chat.ChatCompletionTool {
             items: {
               type: 'object',
               properties: {
-                concept: { type: 'string', description: 'Concept name (PascalCase or Title Case)' },
+                    concept: { type: 'string', description: 'Concept name (PascalCase or Title Case)' },
                 definition: { type: 'string', description: 'Business definition (2-4 sentences)' },
+                states: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Possible states or statuses for this concept (optional)',
+                },
+                business_rules: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Business rules associated with this concept (optional)',
+                },
+                related_concepts: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Other domain concepts related to this one (optional)',
+                },
                 signals: {
                   type: 'array',
                   description: 'Evidence signals from the codebase',
@@ -347,7 +362,17 @@ function parseFinishArgs(args: Record<string, unknown>): AgentConcept[] {
     }
 
     if (concept) {
-      concepts.push({ concept, definition, signals });
+      const states = Array.isArray(obj['states']) ? (obj['states'] as string[]).filter(Boolean) : undefined;
+      const business_rules = Array.isArray(obj['business_rules']) ? (obj['business_rules'] as string[]).filter(Boolean) : undefined;
+      const related_concepts = Array.isArray(obj['related_concepts']) ? (obj['related_concepts'] as string[]).filter(Boolean) : undefined;
+      concepts.push({
+        concept,
+        definition,
+        signals,
+        ...(states !== undefined && { states }),
+        ...(business_rules !== undefined && { business_rules }),
+        ...(related_concepts !== undefined && { related_concepts }),
+      });
     }
   }
 

@@ -98,4 +98,19 @@
   - The `list_skills` tool does NOT search recursively into skills/rules/business/ — only reads skills/rules/ top-level
 ---
 
+## 2026-06-15 17:00 - US-007
+- Extended AgentConcept interface with states?, business_rules?, related_concepts? optional fields
+- Updated finish() tool schema in runner.ts to accept the 3 new optional array fields
+- Updated parseFinishArgs() to pass through the new fields into AgentConcept objects
+- Updated getExistingSkillNames() to scan both skills/domain/ and skills/rules/business/ directories, filtering by frontmatter type (domain or business_rule)
+- Updated convertAgentConcepts() to set skipEnrich flag when agent provides states/business_rules/related_concepts
+- Added skipEnrich?: boolean to DomainConcept interface
+- Added enrichment skip logic in generateDomainSkills(): if concept.skipEnrich is true, skip LLM enrichment
+- Files changed: src/types.ts, src/agent/runner.ts, src/commands/discover.ts, src/inferrer/heuristics.ts, src/skills/domainSkills.ts
+- **Learnings for future iterations:**
+  - The finish tool schema must stay in sync with AgentConcept interface — adding new fields requires updating both buildFinishTool() and parseFinishArgs()
+  - getExistingSkillNames now reads frontmatter to filter by type — ensure skill file frontmatter always includes a type field
+  - The agent path still passes noEnrich: true to generateDomainSkills, but the skipEnrich flag enables selective per-concept skip for enrichment
+---
+
 

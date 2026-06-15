@@ -24,6 +24,7 @@ export interface DomainConcept {
   concept: string;
   definition?: string;
   signals: Signal[];
+  skipEnrich?: boolean;
 }
 
 export interface InferrerInput {
@@ -83,7 +84,7 @@ export function inferConcepts(input: InferrerInput): DomainConcept[] {
   }
 
   for (const enumSig of input.enums) {
-    const concept = toSnakeCase(enumSig.name);
+    const concept = toSnakeCase(stripClassAffixes(enumSig.name));
     addSignal(concept, {
       type: 'enum',
       detail: `Enum: \`${enumSig.name}\` = [${enumSig.values.map((v) => `"${v}"`).join(', ')}]`,
@@ -115,7 +116,7 @@ export function inferConcepts(input: InferrerInput): DomainConcept[] {
 
   for (const sig of input.ormSignals ?? []) {
     if (sig.type === 'orm_model') {
-      const concept = toSnakeCase(sig.name);
+      const concept = toSnakeCase(stripClassAffixes(sig.name));
       addSignal(concept, {
         type: 'orm_model',
         detail: `ORM model: \`${sig.name}\``,
@@ -134,7 +135,7 @@ export function inferConcepts(input: InferrerInput): DomainConcept[] {
         });
       }
     } else if (sig.type === 'orm_enum') {
-      const concept = toSnakeCase(sig.name);
+      const concept = toSnakeCase(stripClassAffixes(sig.name));
       addSignal(concept, {
         type: 'orm_enum',
         detail: `ORM enum: \`${sig.name}\` = [${sig.value}]`,
@@ -158,6 +159,54 @@ export function inferConcepts(input: InferrerInput): DomainConcept[] {
   }
 
   return result.sort((a, b) => b.signals.length - a.signals.length);
+}
+
+const CLASS_SUFFIXES = [
+  'Repositories', 'Repository',
+  'Controllers', 'Controller',
+  'Services', 'Service',
+  'Managers', 'Manager',
+  'Handlers', 'Handler',
+  'Observers', 'Observer',
+  'Providers', 'Provider',
+  'Listeners', 'Listener',
+  'Factories', 'Factory',
+  'Builders', 'Builder',
+  'Mappers', 'Mapper',
+  'Facades', 'Facade',
+  'Commands', 'Command',
+  'Actions', 'Action',
+  'Events', 'Event',
+  'Models', 'Model',
+  'Enums', 'Enum',
+  'Entities', 'Entity',
+  'Interfaces', 'Interface',
+  'Traits', 'Trait',
+  'Jobs', 'Job',
+  'Middleware',
+  'Dto', 'DTO',
+];
+
+const CLASS_PREFIXES = ['Abstract', 'Base'];
+
+function stripClassAffixes(name: string): string {
+  let result = name;
+
+  for (const prefix of CLASS_PREFIXES) {
+    if (result.startsWith(prefix) && result.length > prefix.length) {
+      result = result.slice(prefix.length);
+      break;
+    }
+  }
+
+  for (const suffix of CLASS_SUFFIXES) {
+    if (result.endsWith(suffix) && result.length > suffix.length) {
+      result = result.slice(0, -suffix.length);
+      break;
+    }
+  }
+
+  return result || name;
 }
 
 function normalizeConcept(name: string): string {

@@ -244,11 +244,29 @@ async function runDiscoverAgent(
 }
 
 function getExistingSkillNames(projectPath: string): string[] {
-  const skillsDir = path.join(projectPath, 'skills', 'domain');
-  if (!fs.existsSync(skillsDir)) return [];
-  return fs.readdirSync(skillsDir)
-    .filter((f) => f.endsWith('.md'))
-    .map((f) => f.replace(/\.md$/, ''));
+  const names: string[] = [];
+  const dirs = [
+    path.join(projectPath, 'skills', 'domain'),
+    path.join(projectPath, 'skills', 'rules', 'business'),
+  ];
+
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.md')) continue;
+      const content = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const fm = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!fm) continue;
+      const typeLine = fm[1].split('\n').find((l) => l.startsWith('type:'));
+      if (!typeLine) continue;
+      const type = typeLine.slice(5).trim();
+      if (type === 'domain' || type === 'business_rule') {
+        names.push(f.replace(/\.md$/, ''));
+      }
+    }
+  }
+
+  return names;
 }
 
 function getExistingDomainAndRuleNames(projectPath: string): string[] {
@@ -279,6 +297,7 @@ function convertAgentConcepts(agentConcepts: AgentConcept[]): DomainConcept[] {
       detail: s.value,
       source: s.file,
     })),
+    skipEnrich: !!(ac.states?.length || ac.business_rules?.length || ac.related_concepts?.length),
   }));
 }
 
