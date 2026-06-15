@@ -451,3 +451,14 @@
   - The git root check happens before any git diff commands, preventing silent incorrect behavior in monorepo subdirectories
   - isGitAvailable() is called first in runIncrementalRebuild, so detectChangedFiles only runs when git is confirmed available
 ---
+
+## 2026-06-15 20:15 - US-034
+- Replaced setInterval with recursive setTimeout loop controlled by a stopping flag
+- Added SIGINT/SIGTERM handlers that set stopping = true and log a message
+- If a cycle is running, it completes before exit; if idle, exits immediately
+- Files changed: src/commands/watch.ts
+- **Learnings for future iterations:**
+  - The running flag prevents race between signal handler and scheduleNext — without it, a signal during the interval wait could call scheduleNext after exit
+  - process.exit(0) in signal handlers is necessary because otherwise the process would just wait for the next signal
+  - Preventing duplicate signals (if stopping) avoids logging the shutdown message multiple times
+---

@@ -29,9 +29,34 @@ export async function runWatch(options: WatchOptions = {}): Promise<void> {
   const interval = (config.watch_interval_seconds ?? 30) * 1000;
   console.log(`DomainLens watch — polling every ${interval / 1000}s\n`);
 
+  let stopping = false;
+  let running = false;
   let cycle = 0;
 
+  process.on('SIGINT', () => {
+    if (stopping) return;
+    stopping = true;
+    console.log('\n⚠ Stopping after current cycle completes...');
+    if (!running) process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    if (stopping) return;
+    stopping = true;
+    console.log('\n⚠ Stopping after current cycle completes...');
+    if (!running) process.exit(0);
+  });
+
+  const scheduleNext = (): void => {
+    if (stopping) {
+      process.exit(0);
+      return;
+    }
+    setTimeout(runCycle, interval);
+  };
+
   const runCycle = async (): Promise<void> => {
+    running = true;
     cycle++;
     const now = new Date();
     const timeStr = now.toISOString().replace('T', ' ').slice(0, 19);
@@ -49,10 +74,11 @@ export async function runWatch(options: WatchOptions = {}): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${timeStr}] ✗ Cycle #${cycle} failed: ${msg}`);
+    } finally {
+      running = false;
+      scheduleNext();
     }
   };
 
   await runCycle();
-
-  setInterval(runCycle, interval);
 }
