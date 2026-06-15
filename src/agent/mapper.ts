@@ -151,12 +151,18 @@ function getExploredDirs(
 ): string[] {
   const dirs: string[] = [];
   for (const msg of messages) {
-    if (msg.role !== 'tool') continue;
-    const content = typeof msg.content === 'string' ? msg.content : '';
-    if (content.includes('dir ')) {
-      for (const line of content.split('\n')) {
-        const match = line.match(/^dir\s+(.+)$/);
-        if (match) dirs.push(match[1]);
+    if (msg.role !== 'assistant') continue;
+    const toolCalls = (msg as OpenAI.Chat.ChatCompletionAssistantMessageParam).tool_calls;
+    if (!toolCalls) continue;
+    for (const tc of toolCalls) {
+      if (tc.type !== 'function' || tc.function.name !== 'list_directory') continue;
+      try {
+        const args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        if (typeof args.path === 'string') {
+          dirs.push(args.path);
+        }
+      } catch {
+        // skip malformed arguments
       }
     }
   }

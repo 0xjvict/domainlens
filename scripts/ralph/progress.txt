@@ -336,3 +336,13 @@
   - MIN_FILE_READS only affects the re-prompt logic, not the forceSummarize threshold — small batches can still accumulate context and hit agentMaxContextTokens
   - The file_filter.length check is O(1) and doesn't affect performance
 ---
+
+## 2026-06-15 17:45 - US-024
+- Rewrote getExploredDirs to read args.path from assistant tool_calls (list_directory) instead of parsing 'dir ' lines from tool result content
+- Early-exit now correctly detects when all code_paths have been covered, terminating the mapping loop
+- Files changed: src/agent/mapper.ts
+- **Learnings for future iterations:**
+  - The previous implementation relied on the tool output format ('dir  name') which could fail if the handler changes output format or truncation occurs
+  - Reading from tool_calls arguments is more reliable since it captures the agent's intent before any formatting or truncation
+  - The existing allCodePathsCovered logic still works correctly with the new implementation since it checks if explored dirs start with code_path prefixes
+---
