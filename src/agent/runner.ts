@@ -198,7 +198,9 @@ async function runSingleSession(
       console.log(
         `\n⚠ File read limit reached (${fileReads} files read, ~${accumulatedInputTokens.toLocaleString()} tokens accumulated).`
       );
-      const shouldContinue = await promptYesNo('Continue reading? [y/N]: ');
+      const shouldContinue = !process.stdin.isTTY
+        ? (console.log('  Non-interactive environment — stopping at file limit. Increase agent_max_files in config to explore more files.'), false)
+        : await promptYesNo('Continue reading? [y/N]: ');
       if (!shouldContinue) {
         return await forceSummarize(client, model, messages, tools, fileReads);
       }

@@ -393,3 +393,26 @@
   - Step numbering (1/5) keeps output consistent with the standard pipeline
   - Business rules extraction in agent mode follows the same pattern as standard: candidates → batch extraction → skill generation
 ---
+
+## 2026-06-15 19:00 - US-029
+- Added process.stdin.isTTY check before promptYesNo in runSingleSession
+- Non-TTY environments (CI, Docker) skip prompt, log a message, and proceed to forceSummarize
+- Interactive TTY mode preserves existing behavior unchanged
+- Files changed: src/agent/runner.ts
+- **Learnings for future iterations:**
+   - process.stdin.isTTY is undefined when stdin is piped or redirected — simple truthy check works for both cases
+   - The comma operator (expr, false) pattern keeps the ternary concise for side-effect + return
+---
+
+## 2026-06-15 19:15 - US-030
+- Added MAX_GLOB_RESULTS = 500 constant to src/agent/tools.ts
+- walkForGlob now returns total match count (number) and caps results array at maxResults
+- When glob results exceed MAX_GLOB_RESULTS, a truncation notice is appended: '(truncated — showing 500 of N total matches. Use a more specific pattern.)'
+- Single-session and agent-mode glob_files both benefit from the cap (shared implementation)
+- When results are within limit, no notice is added (existing behavior unchanged)
+- Files changed: src/agent/tools.ts
+- **Learnings for future iterations:**
+  - walkForGlob signature changed from returning void to returning number (total match count) — any external callers must be updated
+  - The cap is on results pushed to the array, not on walking — total count is still computed so the truncation notice shows accurate N
+  - MAX_GLOB_RESULTS sits at the file level alongside MAX_READ_LINES and MAX_SEARCH_RESULTS
+---

@@ -186,17 +186,24 @@ function globToRegex(pattern: string): RegExp {
   return new RegExp(`^${regexStr}$`);
 }
 
+const MAX_GLOB_RESULTS = 500;
+
 function globFiles(pattern: string, config: DomainLensConfig, projectPath: string): string {
   const regex = globToRegex(pattern);
   const matches: string[] = [];
+  let totalFound = 0;
 
   for (const codePath of config.code_paths) {
     const fullPath = path.resolve(projectPath, codePath);
     if (!fs.existsSync(fullPath)) continue;
-    walkForGlob(fullPath, config.ignore, projectPath, regex, matches);
+    totalFound += walkForGlob(fullPath, config.ignore, projectPath, regex, matches, MAX_GLOB_RESULTS - matches.length);
   }
 
-  return matches.length > 0 ? matches.join('\n') : '(no files matched)';
+  if (matches.length === 0) return '(no files matched)';
+  if (totalFound > MAX_GLOB_RESULTS) {
+    matches.push(`(truncated — showing ${matches.length} of ${totalFound} total matches. Use a more specific pattern.)`);
+  }
+  return matches.join('\n');
 }
 
 function walkForGlob(
@@ -204,15 +211,17 @@ function walkForGlob(
   ignoreList: string[],
   projectPath: string,
   regex: RegExp,
-  results: string[]
-): void {
+  results: string[],
+  maxResults: number
+): number {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dirPath, { withFileTypes: true });
   } catch {
-    return;
+    return 0;
   }
 
+  let total = 0;
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name);
     const relativePath = path.relative(projectPath, fullPath);
@@ -220,11 +229,15 @@ function walkForGlob(
     if (isIgnored(relativePath, entry.name, ignoreList)) continue;
 
     if (entry.isDirectory()) {
-      walkForGlob(fullPath, ignoreList, projectPath, regex, results);
+      total += walkForGlob(fullPath, ignoreList, projectPath, regex, results, maxResults);
     } else if (entry.isFile() && regex.test(relativePath)) {
-      results.push(relativePath);
+      total++;
+      if (results.length < maxResults) {
+        results.push(relativePath);
+      }
     }
   }
+  return total;
 }
 
 const MAX_READ_LINES = 500;
