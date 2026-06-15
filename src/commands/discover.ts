@@ -10,6 +10,7 @@ import type { DomainConcept } from '../inferrer/heuristics.js';
 import { generateDomainSkills } from '../skills/domainSkills.js';
 import { generateRulesSkills } from '../skills/rulesSkills.js';
 import { runAgent } from '../agent/runner.js';
+import { preScanConcepts, mergeConcepts } from '../llm/preScan.js';
 
 export interface DiscoverOptions {
   dryRun?: boolean;
@@ -51,20 +52,42 @@ async function runDiscoverStandard(
   config: DomainLensConfig,
   options: DiscoverOptions
 ): Promise<void> {
-  console.log('▶ Step 1/6: Extracting database schema...');
+  console.log('▶ Step 1/7: Extracting database schema...');
   const schema = await extractSchema(config, projectPath);
   if (schema) {
     console.log(`  ✓ ${schema.tables.length} tables, ${schema.enums.length} enums`);
   }
 
-  console.log('▶ Step 2/6: Scanning source code...');
+  let llmConceptNames: string[] = [];
+  if (!options.noEnrich) {
+    const existingNames = getExistingDomainAndRuleNames(projectPath);
+    console.log('▶ Step 2/7: LLM pre-scan for implicit concepts...');
+    llmConceptNames = await preScanConcepts({
+      config,
+      schema,
+      projectPath,
+      existingConceptNames: existingNames,
+    });
+    if (llmConceptNames.length > 0) {
+      console.log(`  ✓ ${llmConceptNames.length} implicit concepts discovered by LLM`);
+      for (const name of llmConceptNames) {
+        console.log(`    → Concept: "${name}" (ai-inferred, no direct signals)`);
+      }
+    } else {
+      console.log('  No additional implicit concepts discovered');
+    }
+  } else {
+    console.log('▶ Step 2/7: LLM pre-scan — skipped (--no-enrich)');
+  }
+
+  console.log('▶ Step 3/7: Scanning source code...');
   const sqlExamples = scanSqlExamples(config, projectPath);
   const { constants, enums } = scanConstantsAndEnums(config, projectPath);
   console.log(
     `  ✓ ${sqlExamples.length} SQL examples, ${constants.length} constants, ${enums.length} enums`
   );
 
-  console.log('▶ Step 3/6: Scanning ORM models...');
+  console.log('▶ Step 4/7: Scanning ORM models...');
   const ormOverride = config.orm as OrmType | undefined;
   const { orm: detectedOrm, signals: ormSignals } = scanOrm(projectPath, config, ormOverride);
   if (detectedOrm) {
@@ -76,14 +99,14 @@ async function runDiscoverStandard(
     console.log('  No ORM detected — using generic code scanner only');
   }
 
-  console.log('▶ Step 4/6: Extracting documentation...');
+  console.log('▶ Step 5/7: Extracting documentation...');
   const { sections, sqlBlocks, adrs } = extractDocs(config, projectPath);
   console.log(
     `  ✓ ${sections.length} sections, ${sqlBlocks.length} SQL blocks, ${adrs.length} ADRs`
   );
 
-  console.log('▶ Step 5/6: Inferring domain concepts...');
-  const concepts = inferConcepts({
+  console.log('▶ Step 6/7: Inferring domain concepts...');
+  const heuristicConcepts = inferConcepts({
     schema,
     sqlExamples,
     constants,
@@ -91,9 +114,12 @@ async function runDiscoverStandard(
     docSections: sections,
     ormSignals,
   });
-  console.log(`  ✓ ${concepts.length} domain concepts inferred`);
+  const concepts = mergeConcepts(heuristicConcepts, llmConceptNames);
+  const heuristicCount = heuristicConcepts.length;
+  const llmOnlyCount = concepts.length - heuristicCount;
+  console.log(`  ✓ ${concepts.length} domain concepts (${heuristicCount} from heuristics${llmOnlyCount > 0 ? `, ${llmOnlyCount} from LLM pre-scan` : ''})`);
 
-  console.log('▶ Step 6/6: Generating skills...');
+  console.log('▶ Step 7/7: Generating skills...');
   const domainResult = await generateDomainSkills(concepts, config, projectPath, {
     dryRun: options.dryRun,
     force: options.force,
@@ -188,6 +214,25 @@ function getExistingSkillNames(projectPath: string): string[] {
   return fs.readdirSync(skillsDir)
     .filter((f) => f.endsWith('.md'))
     .map((f) => f.replace(/\.md$/, ''));
+}
+
+function getExistingDomainAndRuleNames(projectPath: string): string[] {
+  const names: string[] = [];
+  const domainDir = path.join(projectPath, 'skills', 'domain');
+  const businessDir = path.join(projectPath, 'skills', 'rules', 'business');
+
+  if (fs.existsSync(domainDir)) {
+    for (const f of fs.readdirSync(domainDir)) {
+      if (f.endsWith('.md')) names.push(f.replace(/\.md$/, ''));
+    }
+  }
+  if (fs.existsSync(businessDir)) {
+    for (const f of fs.readdirSync(businessDir)) {
+      if (f.endsWith('.md')) names.push(f.replace(/\.md$/, ''));
+    }
+  }
+
+  return names;
 }
 
 function convertAgentConcepts(agentConcepts: AgentConcept[]): DomainConcept[] {
