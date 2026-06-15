@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { DomainLensConfig, SchemaCache } from '../types.js';
 import type { Signal } from '../inferrer/heuristics.js';
 import type { Constant } from '../extractors/codeScanner.js';
-import { enrichConcept, hasLlmKey } from '../llm/openrouter.js';
+import { enrichDomainConcept, hasLlmKey } from '../llm/openrouter.js';
 import type { SkillGenOptions, SkillGenResult } from './domainSkills.js';
 
 interface RuleSpec {
@@ -54,9 +54,9 @@ export async function generateRulesSkills(
       let source = 'auto-generated';
 
       if (canEnrich && rule.signals.length > 0) {
-        const enrichedDef = await enrichConcept(rule.name, rule.signals, config);
-        if (enrichedDef) {
-          ruleDefinition = enrichedDef;
+        const result = await enrichDomainConcept(rule.name, rule.signals, config, projectPath);
+        if (result) {
+          ruleDefinition = result.content;
           source = 'ai-generated';
           enriched++;
         }

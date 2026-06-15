@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { DomainLensConfig } from '../types.js';
 import type { DomainConcept, Signal } from '../inferrer/heuristics.js';
-import { enrichConcept } from '../llm/openrouter.js';
+import { enrichDomainConcept, hasLlmKey } from '../llm/openrouter.js';
 
 export interface SkillGenOptions {
   dryRun?: boolean;
@@ -32,6 +32,11 @@ export async function generateDomainSkills(
   let updated = 0;
   let enriched = 0;
 
+  const canEnrich = !options.noEnrich && hasLlmKey(config);
+  if (!options.noEnrich && !canEnrich) {
+    console.log(`⚠ env var $${config.llm_key_env} not set — falling back to skeleton mode (use --no-enrich to suppress this)`);
+  }
+
   for (const concept of concepts) {
     const skillPath = path.join(skillsDir, `${concept.concept}.md`);
     const exists = fs.existsSync(skillPath);
@@ -48,28 +53,30 @@ export async function generateDomainSkills(
         updated++;
       }
     } else {
-      let definition: string;
+      let enrichedContent: string;
+      let tags: string[] = [];
       let source: string;
 
       if (concept.definition) {
-        definition = concept.definition;
+        enrichedContent = concept.definition;
         source = 'ai-generated';
-      } else if (!options.noEnrich) {
-        const enriched_def = await enrichConcept(concept.concept, concept.signals, config);
-        if (enriched_def) {
-          definition = enriched_def;
+      } else if (canEnrich) {
+        const result = await enrichDomainConcept(concept.concept, concept.signals, config, projectPath);
+        if (result) {
+          enrichedContent = result.content;
+          tags = result.tags;
           source = 'ai-generated';
           enriched++;
         } else {
-          definition = '<!-- TODO: fill in the business definition of this concept -->';
+          enrichedContent = '';
           source = 'auto-generated';
         }
       } else {
-        definition = '<!-- TODO: fill in the business definition of this concept -->';
+        enrichedContent = '';
         source = 'auto-generated';
       }
 
-      const content = buildDomainSkill(concept, definition, source);
+      const content = buildDomainSkill(concept, enrichedContent, tags, source);
 
       if (options.dryRun) {
         console.log(`[dry-run] Would write ${skillPath}:\n${content}`);
@@ -90,11 +97,16 @@ function filterNewSignals(signals: Signal[], skillPath: string): Signal[] {
 
 function buildDomainSkill(
   concept: DomainConcept,
-  definition: string,
+  enrichedContent: string,
+  tags: string[],
   source: string
 ): string {
   const today = new Date().toISOString().split('T')[0];
-  const tags = deriveTagsFromSignals(concept.signals);
+
+  if (tags.length === 0) {
+    tags = deriveTagsFromSignals(concept.signals);
+  }
+
   const sqlExamples = concept.signals.filter((s) => s.type === 'sql_example');
 
   const lines: string[] = [
@@ -105,13 +117,31 @@ function buildDomainSkill(
     `source: ${source}`,
     `last_updated: ${today}`,
     '---',
-    '',
-    '## Definition',
-    definition,
-    '',
-    '## Detected Signals',
   ];
 
+  if (enrichedContent) {
+    lines.push('', enrichedContent);
+  } else {
+    lines.push(
+      '',
+      '## Definition',
+      '<!-- TODO: fill in the business definition of this concept -->',
+      '',
+      '## States & Lifecycle',
+      '<!-- TODO -->',
+      '',
+      '## Business Rules',
+      '<!-- TODO -->',
+      '',
+      '## Related Concepts',
+      '<!-- TODO -->',
+      '',
+      '## Common Query Patterns',
+      '<!-- TODO -->',
+    );
+  }
+
+  lines.push('', '## Detected Signals');
   for (const signal of concept.signals.filter((s) => s.type !== 'sql_example')) {
     lines.push(`- ${signal.detail}`);
   }
