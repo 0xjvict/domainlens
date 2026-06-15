@@ -42,11 +42,15 @@ function detectChangedFiles(projectPath: string): ChangedFile[] {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const root = stdout.trim();
-    const gitDir = path.relative(projectPath, root) || '.';
+    const root = path.resolve(stdout.trim());
+
+    if (path.resolve(projectPath) !== root) {
+      console.log('  ⚠ Git root differs from project path — incremental rebuild requires projectPath to be the git root. Run `domainlens discover` manually.');
+      return [];
+    }
 
     const modified = execSync('git diff HEAD --name-only', {
-      cwd: gitDir,
+      cwd: root,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -56,7 +60,7 @@ function detectChangedFiles(projectPath: string): ChangedFile[] {
       .map((f) => ({ path: f, status: 'modified' as const }));
 
     const untracked = execSync('git ls-files --others --exclude-standard', {
-      cwd: gitDir,
+      cwd: root,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })

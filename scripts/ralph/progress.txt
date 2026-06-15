@@ -440,3 +440,14 @@
   - When both getExistingSkillNames and getExistingDomainAndRuleNames exist with similar logic, consider consolidating them to avoid drift
   - getExistingDomainAndRuleNames is used by pre-scan (preScan.ts) to skip already-documented concepts — frontmatter name: must be the canonical identifier everywhere
 ---
+
+## 2026-06-15 20:00 - US-033
+- Added git root verification in detectChangedFiles: compares projectPath against resolved git root
+- If they differ, logs a clear warning and returns [] instead of running git commands in wrong directory
+- Git commands now use the absolute root path as cwd instead of computed relative gitDir
+- Files changed: src/commands/incremental.ts
+- **Learnings for future iterations:**
+  - path.resolve() normalizes trailing slashes and relative segments — needed for reliable comparison
+  - The git root check happens before any git diff commands, preventing silent incorrect behavior in monorepo subdirectories
+  - isGitAvailable() is called first in runIncrementalRebuild, so detectChangedFiles only runs when git is confirmed available
+---

@@ -514,6 +514,52 @@
       "priority": 32,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Warn and abort incremental rebuild when projectPath is not the git root",
+      "description": "As a DomainLens user with a project in a git subdirectory (monorepo), I want a clear warning instead of silent incorrect behavior when the git root differs from the project path, so I understand the limitation instead of getting wrong or missing change detection.",
+      "acceptanceCriteria": [
+        "In detectChangedFiles in src/commands/incremental.ts, after resolving the git root via git rev-parse --show-toplevel, compare path.resolve(root) against path.resolve(projectPath)",
+        "If they differ, log '⚠ Git root differs from project path — incremental rebuild requires projectPath to be the git root. Run domainlens discover manually.' and return []",
+        "Git commands that do run use the absolute root path as cwd (not the relative gitDir variable)",
+        "isGitAvailable check is unaffected",
+        "Typecheck passes"
+      ],
+      "priority": 33,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Graceful shutdown for domainlens watch on SIGINT/SIGTERM",
+      "description": "As a DomainLens user running domainlens watch, I want Ctrl+C to wait for the current cycle to finish before exiting, so that skill .md files are never left in a partially-written state due to an abrupt process kill mid-enrichment.",
+      "acceptanceCriteria": [
+        "In src/commands/watch.ts, replace setInterval with a recursive setTimeout loop controlled by a stopping flag",
+        "process.on(\"SIGINT\") and process.on(\"SIGTERM\") set stopping = true and log \"Stopping after current cycle completes...\"",
+        "After the current runCycle() promise resolves, the loop checks stopping and calls process.exit(0) instead of scheduling the next cycle",
+        "If no cycle is running when the signal arrives, exit immediately",
+        "Typecheck passes"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Replace existing Detected Changes section instead of appending duplicates",
+      "description": "As a DomainLens user running domainlens watch over many cycles, I want the ## Detected Changes section in each skill to be replaced on each re-enrichment instead of appended, so that skill files do not grow unboundedly and semantic search does not index repeated content.",
+      "acceptanceCriteria": [
+        "In appendDetectedChanges in src/commands/incremental.ts, before appending check if the file already contains a ## Detected Changes section",
+        "If found, replace the existing section (from ## Detected Changes to end of file, or to the next ## heading) with the new content",
+        "If not found, append as before",
+        "appendDeletedSource applies the same replace-or-append logic",
+        "The replacement preserves all content above ## Detected Changes unchanged",
+        "Typecheck passes"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": ""
     }
   ]
 }
