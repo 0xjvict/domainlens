@@ -79,6 +79,16 @@ export interface EnumType {
   values: string[];
 }
 
+export interface BusinessRule {
+  name: string;
+  description: string;
+  trigger: string;
+  conditions: string[];
+  effect: string;
+  enforced_in: string[];
+  related_concepts: string[];
+}
+
 export interface SchemaCache {
   extracted_at: string;
   tables: TableInfo[];

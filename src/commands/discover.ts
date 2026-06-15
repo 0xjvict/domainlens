@@ -11,6 +11,8 @@ import { generateDomainSkills } from '../skills/domainSkills.js';
 import { generateRulesSkills } from '../skills/rulesSkills.js';
 import { runAgent } from '../agent/runner.js';
 import { preScanConcepts, mergeConcepts } from '../llm/preScan.js';
+import { detectCandidates, extractBusinessRules } from '../extractors/businessRules.js';
+import { generateBusinessRulesSkills } from '../skills/businessRulesSkills.js';
 
 export interface DiscoverOptions {
   dryRun?: boolean;
@@ -52,7 +54,7 @@ async function runDiscoverStandard(
   config: DomainLensConfig,
   options: DiscoverOptions
 ): Promise<void> {
-  console.log('▶ Step 1/7: Extracting database schema...');
+  console.log('▶ Step 1/8: Extracting database schema...');
   const schema = await extractSchema(config, projectPath);
   if (schema) {
     console.log(`  ✓ ${schema.tables.length} tables, ${schema.enums.length} enums`);
@@ -61,7 +63,7 @@ async function runDiscoverStandard(
   let llmConceptNames: string[] = [];
   if (!options.noEnrich) {
     const existingNames = getExistingDomainAndRuleNames(projectPath);
-    console.log('▶ Step 2/7: LLM pre-scan for implicit concepts...');
+    console.log('▶ Step 2/8: LLM pre-scan for implicit concepts...');
     llmConceptNames = await preScanConcepts({
       config,
       schema,
@@ -77,17 +79,17 @@ async function runDiscoverStandard(
       console.log('  No additional implicit concepts discovered');
     }
   } else {
-    console.log('▶ Step 2/7: LLM pre-scan — skipped (--no-enrich)');
+    console.log('▶ Step 2/8: LLM pre-scan — skipped (--no-enrich)');
   }
 
-  console.log('▶ Step 3/7: Scanning source code...');
+  console.log('▶ Step 3/8: Scanning source code...');
   const sqlExamples = scanSqlExamples(config, projectPath);
   const { constants, enums } = scanConstantsAndEnums(config, projectPath);
   console.log(
     `  ✓ ${sqlExamples.length} SQL examples, ${constants.length} constants, ${enums.length} enums`
   );
 
-  console.log('▶ Step 4/7: Scanning ORM models...');
+  console.log('▶ Step 4/8: Scanning ORM models...');
   const ormOverride = config.orm as OrmType | undefined;
   const { orm: detectedOrm, signals: ormSignals } = scanOrm(projectPath, config, ormOverride);
   if (detectedOrm) {
@@ -99,13 +101,13 @@ async function runDiscoverStandard(
     console.log('  No ORM detected — using generic code scanner only');
   }
 
-  console.log('▶ Step 5/7: Extracting documentation...');
+  console.log('▶ Step 5/8: Extracting documentation...');
   const { sections, sqlBlocks, adrs } = extractDocs(config, projectPath);
   console.log(
     `  ✓ ${sections.length} sections, ${sqlBlocks.length} SQL blocks, ${adrs.length} ADRs`
   );
 
-  console.log('▶ Step 6/7: Inferring domain concepts...');
+  console.log('▶ Step 6/8: Inferring domain concepts...');
   const heuristicConcepts = inferConcepts({
     schema,
     sqlExamples,
@@ -119,7 +121,7 @@ async function runDiscoverStandard(
   const llmOnlyCount = concepts.length - heuristicCount;
   console.log(`  ✓ ${concepts.length} domain concepts (${heuristicCount} from heuristics${llmOnlyCount > 0 ? `, ${llmOnlyCount} from LLM pre-scan` : ''})`);
 
-  console.log('▶ Step 7/7: Generating skills...');
+  console.log('▶ Step 7/8: Generating domain & technical skills...');
   const domainResult = await generateDomainSkills(concepts, config, projectPath, {
     dryRun: options.dryRun,
     force: options.force,
@@ -131,6 +133,29 @@ async function runDiscoverStandard(
     force: options.force,
     noEnrich: options.noEnrich,
   });
+
+  console.log('▶ Step 8/8: Extracting business rules...');
+  const candidates = detectCandidates(config, projectPath);
+  if (candidates.length > 0) {
+    console.log(`  ✓ ${candidates.length} candidate files detected`);
+    const batchSize = config.rules_batch_size ?? 10;
+    const businessRules = await extractBusinessRules(candidates, config, batchSize);
+    if (businessRules.length > 0) {
+      console.log(`  ✓ ${businessRules.length} business rules extracted`);
+      const bizResult = await generateBusinessRulesSkills(businessRules, config, projectPath, {
+        dryRun: options.dryRun,
+        force: options.force,
+        noEnrich: options.noEnrich,
+      });
+      rulesResult.created += bizResult.created;
+      rulesResult.updated += bizResult.updated;
+      rulesResult.enriched += bizResult.enriched;
+    } else {
+      console.log('  No business rules extracted');
+    }
+  } else {
+    console.log('  No candidate files found in rules_paths');
+  }
 
   const totalCreated = domainResult.created + rulesResult.created;
   const totalUpdated = domainResult.updated + rulesResult.updated;
