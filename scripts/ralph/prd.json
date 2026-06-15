@@ -575,6 +575,55 @@
       "priority": 36,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-037",
+      "title": "Eliminate N+1 queries in schema extraction with bulk queries",
+      "description": "As a DomainLens developer, I want the MySQL and Postgres schema extractors to fetch all table metadata in bulk instead of making 6 sequential queries per table, so that schema extraction time scales with the number of databases/schemas rather than the number of tables.",
+      "acceptanceCriteria": [
+        "In src/extractors/schemaMysql.ts, replace the per-table loop in extractTables with ~4 bulk queries: one for all columns, one for all PKs+FKs, one for all indexes, one for all check+unique constraints — each scoped to the target database via WHERE table_schema = ?",
+        "In src/extractors/schemaPostgres.ts, apply the same bulk approach: one query for all columns, one for all PKs+FKs, one for all indexes (pg_indexes), one for all check+unique constraints",
+        "Results are grouped by table name in memory to assemble TableInfo[] — same output structure as before",
+        "table.indexes is still populated (rulesSkills.ts depends on it)",
+        "Existing schemaMysql.test.ts tests still pass (same output shape)",
+        "Typecheck passes"
+      ],
+      "priority": 37,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Add hash-based schema cache to skip re-extraction when schema is unchanged",
+      "description": "As a DomainLens user running discover repeatedly, I want schema extraction to be skipped when the database schema has not changed since the last run, so that repeated discover runs are faster without unnecessary database round-trips.",
+      "acceptanceCriteria": [
+        "Add schema_hash?: string field to SchemaCache interface in src/types.ts",
+        "In both extractors, before running the full bulk extraction, run one lightweight fingerprint query that fetches (table_name, column_name, data_type, column_type, referenced_table_name) for all tables",
+        "SHA-256 hash the JSON-serialized fingerprint rows (sorted deterministically by table_name then column_name)",
+        "If .domainlens/schemas/latest.json exists and its schema_hash matches the computed hash, return the cached SchemaCache immediately without querying further",
+        "If hash differs or no cache exists, run full bulk extraction (US-037), set schema_hash on the resulting SchemaCache, and write to latest.json",
+        "When --force flag is passed to discover, bypass the hash check and always re-extract (schemaPostgres and schemaMysql receive a force?: boolean parameter)",
+        "Typecheck passes"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "Replace raw schema JSON in agent system prompt with curated summary",
+      "description": "As a DomainLens user running discover --agent, I want the agent to receive a compact schema summary instead of the raw latest.json dump, so that the agent system prompt is smaller and cheaper without losing the relational context the agent needs.",
+      "acceptanceCriteria": [
+        "Create src/utils/schemaSummary.ts with exported function buildSchemaSummary(schema: SchemaCache | null): string",
+        "Format: each table on its own line prefixed with '- ', each column indented with '    - name (type)', FK columns suffixed with ' → referenced_table' (e.g. '    - customer_id (bigint) → customers')",
+        "In src/agent/runner.ts, replace readSchemaJson(projectPath) + raw ${schemaJson} injection: instead load SchemaCache from latest.json (or pass it in) and call buildSchemaSummary(schema) in buildSystemPrompt",
+        "In src/llm/preScan.ts, replace the local buildSchemaSummary function with the shared utility from src/utils/schemaSummary.ts (same format, now also includes FK inline suffix)",
+        "rulesSkills.ts receives full SchemaCache object unchanged — no modification needed",
+        "Typecheck passes"
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

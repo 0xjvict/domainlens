@@ -483,3 +483,18 @@
   - When using regex.exec() in a while loop, the /g flag is REQUIRED — without it, lastIndex never advances and the loop never terminates
   - The cross-concept copy of this regex had /g, proving this was an oversight in the initial implementation
 ---
+
+## 2026-06-15 21:00 - US-037
+- Refactored schemaMysql.ts extractTables to use 4 bulk queries instead of N×6 per-table queries
+  - One bulk query for all columns, one for PK/FK/UNIQUE constraints (combined), one for indexes, one for CHECK constraints
+  - Results grouped by table_name in memory — same TableInfo[] output as before
+- Refactored schemaPostgres.ts extractTables to use 4 bulk queries instead of N×6 per-table queries
+  - Same bulk approach: columns, PK/FK/UNIQUE, indexes (pg_indexes), CHECK
+  - Uses `= ALL($1::text[])` to query multiple schemas in a single round-trip
+- Files changed: src/extractors/schemaMysql.ts, src/extractors/schemaPostgres.ts
+- **Learnings for future iterations:**
+  - Postgres `= ALL($1::text[])` pattern allows filtering by multiple schema values in a single parameterized query
+  - MySQL `information_schema.key_column_usage` contains both PK and FK data in a single table — combined query with constraint_type filter works
+  - In-memory grouping by table_name keeps the same output structure without changing any callers
+  - Both extractors share the same pattern: bulk fetch → filter by table_name → assemble TableInfo[]
+---

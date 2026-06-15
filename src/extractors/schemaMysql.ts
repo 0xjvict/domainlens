@@ -133,179 +133,108 @@ async function extractTables(
   );
 
   const raw = rows as { table_name: string; table_schema: string }[];
-  const tables: TableInfo[] = [];
+  if (raw.length === 0) return [];
 
-  for (const r of raw) {
-    const table = await extractTableDetails(connection, r.table_schema, r.table_name, enumColumns);
-    tables.push(table);
-  }
+  const schema = raw[0].table_schema;
 
-  return tables;
-}
-
-async function extractTableDetails(
-  connection: mysql.Connection,
-  schema: string,
-  tableName: string,
-  enumColumns: EnumColumnInfo[]
-): Promise<TableInfo> {
   const [colRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT
-       column_name,
-       data_type,
-       column_type,
-       is_nullable,
-       column_default,
-       column_comment AS col_description
+    `SELECT table_name, column_name, data_type, column_type, is_nullable, column_default, column_comment AS col_description
      FROM information_schema.columns
-     WHERE table_schema = ? AND table_name = ?
-     ORDER BY ordinal_position`,
-    [schema, tableName]
+     WHERE table_schema = ?
+     ORDER BY table_name, ordinal_position`,
+    [schema]
   );
-
-  const columnsRaw = colRows as {
-    column_name: string;
-    data_type: string;
-    column_type: string;
-    is_nullable: string;
-    column_default: string | null;
-    col_description: string | null;
+  const allColumns = colRows as {
+    table_name: string; column_name: string; data_type: string; column_type: string;
+    is_nullable: string; column_default: string | null; col_description: string | null;
   }[];
 
-  // PK
-  const [pkRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT kcu.column_name
+  const [kcuRows] = await connection.query<mysql.RowDataPacket[]>(
+    `SELECT kcu.table_name, kcu.column_name, tc.constraint_type,
+            kcu.referenced_table_name, kcu.referenced_column_name, kcu.constraint_name,
+            kcu.ordinal_position
      FROM information_schema.table_constraints tc
      JOIN information_schema.key_column_usage kcu
        ON tc.constraint_name = kcu.constraint_name
-       AND tc.table_schema = kcu.table_schema
-       AND tc.table_name = kcu.table_name
-     WHERE tc.table_schema = ? AND tc.table_name = ?
-       AND tc.constraint_type = 'PRIMARY KEY'
-     ORDER BY kcu.ordinal_position`,
-    [schema, tableName]
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+     WHERE kcu.table_schema = ?
+       AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE')
+     ORDER BY kcu.table_name, tc.constraint_type, kcu.ordinal_position`,
+    [schema]
   );
-  const pkRaw = pkRows as { column_name: string }[];
-
-  // FK
-  const [fkRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT
-       kcu.column_name,
-       kcu.referenced_table_name AS foreign_table_name,
-       kcu.referenced_column_name AS foreign_column_name,
-       kcu.constraint_name
-     FROM information_schema.key_column_usage kcu
-     WHERE kcu.table_schema = ? AND kcu.table_name = ?
-       AND kcu.referenced_table_name IS NOT NULL`,
-    [schema, tableName]
-  );
-  const fkRaw = fkRows as {
-    column_name: string;
-    foreign_table_name: string;
-    foreign_column_name: string;
-    constraint_name: string;
+  const kcuRaw = kcuRows as {
+    table_name: string; column_name: string; constraint_type: string;
+    referenced_table_name: string | null; referenced_column_name: string | null;
+    constraint_name: string; ordinal_position: number;
   }[];
 
-  // Indexes via information_schema.statistics (schema-qualified)
   const [idxRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT index_name AS Key_name,
-            column_name AS Column_name,
-            non_unique AS Non_unique,
-            seq_in_index AS Seq_in_index
+    `SELECT table_name, index_name AS Key_name, column_name AS Column_name, non_unique AS Non_unique, seq_in_index AS Seq_in_index
      FROM information_schema.statistics
-     WHERE table_schema = ? AND table_name = ? AND index_name != 'PRIMARY'
-     ORDER BY index_name, seq_in_index`,
-    [schema, tableName]
+     WHERE table_schema = ? AND index_name != 'PRIMARY'
+     ORDER BY table_name, index_name, seq_in_index`,
+    [schema]
   );
   const idxRaw = idxRows as {
-    Key_name: string;
-    Column_name: string;
-    Non_unique: number;
-    Seq_in_index: number;
+    table_name: string; Key_name: string; Column_name: string; Non_unique: number; Seq_in_index: number;
   }[];
 
-  const indexMap = new Map<string, { columns: string[]; unique: boolean }>();
-  for (const r of idxRaw) {
-    if (!indexMap.has(r.Key_name)) {
-      indexMap.set(r.Key_name, { columns: [], unique: r.Non_unique === 0 });
-    }
-    indexMap.get(r.Key_name)!.columns.push(r.Column_name);
-  }
-
-  // CHECK (not supported in MySQL < 8.0.16 — skip gracefully)
-  let checkRaw: { constraint_name: string; check_clause: string }[] = [];
+  let checkRaw: { table_name: string; constraint_name: string; check_clause: string }[] = [];
   try {
     const [checkRows] = await connection.query<mysql.RowDataPacket[]>(
-      `SELECT tc.constraint_name, cc.check_clause
+      `SELECT tc.table_name, tc.constraint_name, cc.check_clause
        FROM information_schema.table_constraints tc
        JOIN information_schema.check_constraints cc
          ON tc.constraint_name = cc.constraint_name AND tc.constraint_schema = cc.constraint_schema
-       WHERE tc.table_schema = ? AND tc.table_name = ?
-         AND tc.constraint_type = 'CHECK'`,
-      [schema, tableName]
+       WHERE tc.table_schema = ? AND tc.constraint_type = 'CHECK'`,
+      [schema]
     );
-    checkRaw = checkRows as { constraint_name: string; check_clause: string }[];
+    checkRaw = checkRows as { table_name: string; constraint_name: string; check_clause: string }[];
   } catch {
     // CHECK constraints not available in this MySQL version; skip
   }
 
-  // UNIQUE
-  const [uniqueRows] = await connection.query<mysql.RowDataPacket[]>(
-    `SELECT tc.constraint_name, kcu.column_name
-     FROM information_schema.table_constraints tc
-     JOIN information_schema.key_column_usage kcu
-       ON tc.constraint_name = kcu.constraint_name
-       AND tc.table_schema = kcu.table_schema
-       AND tc.table_name = kcu.table_name
-     WHERE tc.table_schema = ? AND tc.table_name = ?
-       AND tc.constraint_type = 'UNIQUE'
-     ORDER BY tc.constraint_name, kcu.ordinal_position`,
-    [schema, tableName]
-  );
-  const uniqueRaw = uniqueRows as { constraint_name: string; column_name: string }[];
+  const enumColSet = new Set(enumColumns.map((e) => `${e.schema}.${e.enumName}`));
 
-  const uniqueConstraints = new Map<string, string[]>();
-  for (const r of uniqueRaw) {
-    const existing = uniqueConstraints.get(r.constraint_name) ?? [];
-    existing.push(r.column_name);
-    uniqueConstraints.set(r.constraint_name, existing);
+  const tables: TableInfo[] = [];
+  for (const r of raw) {
+    const tName = r.table_name;
+    const tableColumns = allColumns
+      .filter((c) => c.table_name === tName)
+      .map((c) => {
+        let type = c.data_type;
+        if (type === 'enum' || type === 'ENUM') {
+          type = `enum(${c.column_type.match(/^enum\((.+)\)$/i)?.[1] ?? ''})`;
+        }
+        return { name: c.column_name, type, nullable: c.is_nullable === 'YES', default: c.column_default, comment: c.col_description };
+      });
+
+    const pks = kcuRaw.filter((k) => k.table_name === tName && k.constraint_type === 'PRIMARY KEY').map((k) => k.column_name);
+
+    const fks = kcuRaw
+      .filter((k) => k.table_name === tName && k.constraint_type === 'FOREIGN KEY')
+      .map((k) => ({ column: k.column_name, references_table: k.referenced_table_name!, references_column: k.referenced_column_name!, constraint_name: k.constraint_name }));
+
+    const indexMap = new Map<string, { columns: string[]; unique: boolean }>();
+    for (const i of idxRaw.filter((i) => i.table_name === tName)) {
+      if (!indexMap.has(i.Key_name)) indexMap.set(i.Key_name, { columns: [], unique: i.Non_unique === 0 });
+      indexMap.get(i.Key_name)!.columns.push(i.Column_name);
+    }
+    const indexes = Array.from(indexMap.entries()).map(([name, info]) => ({ name, columns: info.columns, unique: info.unique }));
+
+    const checks = checkRaw.filter((c) => c.table_name === tName).map((c) => ({ name: c.constraint_name, definition: c.check_clause }));
+
+    const uniqueMap = new Map<string, string[]>();
+    for (const k of kcuRaw.filter((k) => k.table_name === tName && k.constraint_type === 'UNIQUE')) {
+      const existing = uniqueMap.get(k.constraint_name) ?? [];
+      existing.push(k.column_name);
+      uniqueMap.set(k.constraint_name, existing);
+    }
+    const uniqueConstraints = Array.from(uniqueMap.entries()).map(([name, columns]) => ({ name, columns }));
+
+    tables.push({ name: tName, schema, columns: tableColumns, primary_keys: pks, foreign_keys: fks, indexes, check_constraints: checks, unique_constraints: uniqueConstraints });
   }
 
-  return {
-    name: tableName,
-    schema,
-    columns: columnsRaw.map((c) => {
-      let type = c.data_type;
-      if (type === 'enum' || type === 'ENUM') {
-        type = `enum(${c.column_type.match(/^enum\((.+)\)$/i)?.[1] ?? ''})`;
-      }
-      return {
-        name: c.column_name,
-        type,
-        nullable: c.is_nullable === 'YES',
-        default: c.column_default,
-        comment: c.col_description,
-      };
-    }),
-    primary_keys: pkRaw.map((r) => r.column_name),
-    foreign_keys: fkRaw.map((r) => ({
-      column: r.column_name,
-      references_table: r.foreign_table_name,
-      references_column: r.foreign_column_name,
-      constraint_name: r.constraint_name,
-    })),
-    indexes: Array.from(indexMap.entries()).map(([name, info]) => ({
-      name,
-      columns: info.columns,
-      unique: info.unique,
-    })),
-    check_constraints: checkRaw.map((r) => ({
-      name: r.constraint_name,
-      definition: r.check_clause,
-    })),
-    unique_constraints: Array.from(uniqueConstraints.entries()).map(([name, columns]) => ({
-      name,
-      columns,
-    })),
-  };
+  return tables;
 }
