@@ -9,7 +9,7 @@ import { scanSqlExamples, scanConstantsAndEnums } from '../extractors/codeScanne
 
 interface EmbedItem {
   source: string;
-  type: 'skill' | 'schema' | 'sql_example' | 'constant';
+  type: 'skill' | 'schema' | 'sql_example' | 'constant' | 'relations';
   excerpt: string;
 }
 
@@ -17,14 +17,12 @@ interface VecItemRow {
   hash: string;
 }
 
-function collectSkills(projectPath: string, items: EmbedItem[]): void {
-  const skillsDir = path.join(projectPath, 'skills');
-  for (const subdir of ['domain', 'rules']) {
-    const dir = path.join(skillsDir, subdir);
-    if (!fs.existsSync(dir)) continue;
-    for (const file of fs.readdirSync(dir)) {
-      if (!file.endsWith('.md')) continue;
-      const filePath = path.join(dir, file);
+function collectMdFiles(dir: string, projectPath: string, items: EmbedItem[]): void {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      collectMdFiles(path.join(dir, entry.name), projectPath, items);
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      const filePath = path.join(dir, entry.name);
       const content = fs.readFileSync(filePath, 'utf-8');
       items.push({
         source: path.relative(projectPath, filePath),
@@ -32,6 +30,33 @@ function collectSkills(projectPath: string, items: EmbedItem[]): void {
         excerpt: content,
       });
     }
+  }
+}
+
+function collectSkills(projectPath: string, items: EmbedItem[]): void {
+  const skillsDir = path.join(projectPath, 'skills');
+  for (const subdir of ['domain', 'rules']) {
+    const dir = path.join(skillsDir, subdir);
+    if (!fs.existsSync(dir)) continue;
+    collectMdFiles(dir, projectPath, items);
+  }
+}
+
+function collectRelations(projectPath: string, items: EmbedItem[]): void {
+  const relationsPath = path.join(projectPath, 'skills', 'domain', 'relations.md');
+  if (!fs.existsSync(relationsPath)) return;
+  const content = fs.readFileSync(relationsPath, 'utf-8');
+  const body = content.replace(/^---[\s\S]*?---\n?/, '');
+  const sectionBlocks = body.split(/(?=^## )/m);
+  for (const block of sectionBlocks) {
+    const headerMatch = block.match(/^## (.+)/m);
+    if (!headerMatch) continue;
+    const sectionName = headerMatch[1].trim();
+    items.push({
+      source: `skills/domain/relations.md#${sectionName}`,
+      type: 'relations',
+      excerpt: block.trim(),
+    });
   }
 }
 
@@ -87,6 +112,7 @@ export async function embedAll(projectPath: string): Promise<EmbedResult> {
 
     const items: EmbedItem[] = [];
     collectSkills(projectPath, items);
+    collectRelations(projectPath, items);
     collectSchema(projectPath, items);
 
     const sqlExamples = scanSqlExamples(config, projectPath);

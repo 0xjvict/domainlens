@@ -149,6 +149,21 @@
   - The git commands use cwd: gitDir (relative to projectPath) for correct git-relative paths
 ---
 
+## 2026-06-15 12:15 - US-011
+- Updated collectSkills() in embed.ts to recursively read subdirectories via collectMdFiles(), so business rules in skills/rules/business/ and technical rules in skills/rules/technical/ are now included in embeddings
+- Added collectRelations() that reads skills/domain/relations.md, strips frontmatter, splits on `## SectionName` headers, and produces one excerpt per section (4 excerpts: Domain Map, Concept Relations, Cross-Concept Rules, Entry Points)
+- Relations excerpts use type: 'relations' and source: skills/domain/relations.md#SectionName
+- Hash-based incremental update applies to all new content types (existing behavior preserved)
+- Embeddings still triggerable via --embeddings flag on discover (no CLI change needed)
+- Added 'relations' to the EmbedItem type union
+- Files changed: src/embeddings/embed.ts
+- **Learnings for future iterations:**
+  - fs.readdirSync with { withFileTypes: true } and Dirent.isDirectory() is the cleanest pattern for recursive directory walking — no extra imports needed
+  - Relations.md sections are split by stripping frontmatter first, then splitting on `(?=^## )` lookahead — same pattern as MCP get_relations tool
+  - The 'relations' EmbedItem type keeps relations excerpts distinguishable from regular skill excerpts in the vec_items table
+  - relations.md may not exist yet (e.g. first discover run before relations are generated) — collectRelations gracefully returns nothing
+---
+
 ## 2026-06-15 12:14 - US-010
 - Created src/commands/watch.ts with runWatch() — polling loop that calls runIncrementalRebuild() every `watch_interval_seconds` (default 30s)
 - Each cycle prints timestamp, cycle number, changed files, affected concepts, enrichment/deletion results, relations regeneration
