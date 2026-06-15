@@ -128,6 +128,31 @@ function findAffectedConcepts(
   return [...concepts.values()];
 }
 
+function readFileSafe(filePath: string): string | null {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+function replaceOrAppendSection(filePath: string, newSection: string): void {
+  const existing = readFileSafe(filePath);
+  if (existing === null) return;
+
+  const idx = existing.indexOf('\n## Detected Changes');
+  if (idx === -1) {
+    fs.appendFileSync(filePath, newSection, 'utf-8');
+    return;
+  }
+
+  const nextSection = existing.indexOf('\n## ', idx + 1);
+  const end = nextSection === -1 ? existing.length : nextSection;
+  const before = existing.slice(0, idx);
+  const after = existing.slice(end);
+  fs.writeFileSync(filePath, before + newSection + after, 'utf-8');
+}
+
 function appendDetectedChanges(filePath: string, content: string, label: string): void {
   const today = new Date().toISOString().split('T')[0];
   const lines: string[] = [];
@@ -136,7 +161,7 @@ function appendDetectedChanges(filePath: string, content: string, label: string)
   lines.push(`<!-- ${label} on ${today} -->`);
   lines.push(content);
   lines.push('');
-  fs.appendFileSync(filePath, lines.join('\n'), 'utf-8');
+  replaceOrAppendSection(filePath, lines.join('\n'));
 }
 
 function appendDeletedSource(filePath: string): void {
@@ -147,15 +172,7 @@ function appendDeletedSource(filePath: string): void {
   lines.push(`<!-- source file deleted on ${today} -->`);
   lines.push('- Source file deleted — this concept may need manual review');
   lines.push('');
-  fs.appendFileSync(filePath, lines.join('\n'), 'utf-8');
-}
-
-function readFileSafe(filePath: string): string | null {
-  try {
-    return fs.readFileSync(filePath, 'utf-8');
-  } catch {
-    return null;
-  }
+  replaceOrAppendSection(filePath, lines.join('\n'));
 }
 
 export async function runIncrementalRebuild(

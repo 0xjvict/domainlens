@@ -462,3 +462,14 @@
   - process.exit(0) in signal handlers is necessary because otherwise the process would just wait for the next signal
   - Preventing duplicate signals (if stopping) avoids logging the shutdown message multiple times
 ---
+
+## 2026-06-15 20:30 - US-035
+- Added replaceOrAppendSection helper: reads file, checks for existing ## Detected Changes, replaces if found, appends if not
+- appendDetectedChanges and appendDeletedSource both use the new helper
+- Replacement preserves all content above ## Detected Changes unchanged
+- Files changed: src/commands/incremental.ts
+- **Learnings for future iterations:**
+  - The replacement boundary is the next `\n## ` heading or end of file — this correctly handles both trailing content and no trailing content
+  - indexOf('\n## Detected Changes') searches for the newline-prefixed header, avoiding false matches in section content
+  - replaceOrAppendSection returns silently if the file can't be read (graceful handling for concurrent modifications)
+---
