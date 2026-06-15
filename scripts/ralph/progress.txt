@@ -229,3 +229,18 @@
   - The read_file restriction is applied in the handler, not in tool definitions — so the agent still sees read_file as available but gets a clear error message
   - file_filter uses exact path matching (fileFilter.includes) — paths must match the format returned by glob_files exactly
 ---
+
+## 2026-06-15 13:15 - US-016
+- Created src/agent/consolidator.ts with consolidateConcepts(batches: AgentConcept[][]): AgentConcept[]
+- Deduplication uses case-insensitive normalized name as key
+- Signals concatenated and deduplicated by value
+- related_concepts, states, business_rules merged as unions (no duplicates)
+- Definition from batch with more signals wins; other appended as "Alternate definition" if substantially different
+- isSubstantiallyDifferent normalizes both strings (lowercase, strip non-alphanumeric) before comparing
+- Files changed: src/agent/consolidator.ts (new)
+- **Learnings for future iterations:**
+  - mergeArrayField uses a generic type parameter K to handle states, business_rules, and related_concepts uniformly
+  - Merge operations are all O(n) with Set lookups for deduplication
+  - Definition comparison uses a simple normalization heuristic — no semantic similarity check
+  - consolidateConcepts preserves the original casing of the concept name (uses first encountered variant)
+---
