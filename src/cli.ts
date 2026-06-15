@@ -27,9 +27,10 @@ program
 program
   .command('init')
   .description('Initialize DomainLens in the current project')
-  .action(() => {
+  .option('-y, --yes', 'Skip wizard and use defaults (non-interactive)')
+  .action((options) => {
     try {
-      runInit();
+      runInit(undefined, options);
     } catch (err) {
       errExit(err);
     }

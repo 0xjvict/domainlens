@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import * as readline from 'node:readline';
 
 // Config field reference:
 //   db_url_env              — env var name holding the database URL
@@ -42,7 +43,11 @@ const DEFAULT_CONFIG = {
 
 const GITIGNORE_ENTRIES = ['.domainlens/schemas/', '.domainlens/embeddings.db', '.domainlens/file-concept-map.json'];
 
-export function runInit(projectPath: string = process.cwd()): void {
+interface InitOptions {
+  yes?: boolean;
+}
+
+export async function runInit(projectPath: string = process.cwd(), options?: InitOptions): Promise<void> {
   const domainlensDir = path.join(projectPath, '.domainlens');
   const schemasDir = path.join(domainlensDir, 'schemas');
   const embeddingsDir = path.join(domainlensDir, 'embeddings');
@@ -60,8 +65,11 @@ export function runInit(projectPath: string = process.cwd()): void {
   }
 
   if (!fs.existsSync(configPath)) {
-    fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', 'utf-8');
-    console.log('✓ Created .domainlens/config.json');
+    if (options?.yes) {
+      writeDefaultConfig(configPath);
+    } else {
+      await runWizard(configPath, projectPath);
+    }
   } else {
     console.log('✓ .domainlens/config.json already exists — skipping');
   }
@@ -69,6 +77,65 @@ export function runInit(projectPath: string = process.cwd()): void {
   updateGitignore(gitignorePath);
 
   console.log('\nRun domainlens mcp-config to get the MCP snippet for your agent');
+}
+
+function writeDefaultConfig(configPath: string): void {
+  fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', 'utf-8');
+  console.log('✓ Created .domainlens/config.json');
+}
+
+async function runWizard(configPath: string, projectPath: string): Promise<void> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  const prompt = (query: string): Promise<string> =>
+    new Promise((resolve) => rl.question(query, resolve));
+
+  const defaultDbType = detectDefaultDbType();
+  const dbType = await prompt(`Database type (postgres/mysql/none) [${defaultDbType}]: `);
+  const finalDbType = dbType.trim() || defaultDbType;
+
+  const dbUrlEnv = await prompt(`Env var name for database URL [${DEFAULT_CONFIG.db_url_env}]: `);
+  const finalDbUrlEnv = dbUrlEnv.trim() || DEFAULT_CONFIG.db_url_env;
+
+  const llmKeyEnv = await prompt(`Env var name for LLM API key [${DEFAULT_CONFIG.llm_key_env}]: `);
+  const finalLlmKeyEnv = llmKeyEnv.trim() || DEFAULT_CONFIG.llm_key_env;
+
+  const detectedPaths = detectCodePaths(projectPath);
+  const defaultPaths = detectedPaths.length > 0 ? detectedPaths.join(', ') : DEFAULT_CONFIG.code_paths.join(', ');
+  const codePathsRaw = await prompt(`Code paths to scan (comma-separated) [${defaultPaths}]: `);
+  const finalCodePaths = codePathsRaw.trim()
+    ? codePathsRaw.split(',').map((p) => p.trim()).filter(Boolean)
+    : (detectedPaths.length > 0 ? detectedPaths : [...DEFAULT_CONFIG.code_paths]);
+
+  rl.close();
+
+  const config = {
+    ...DEFAULT_CONFIG,
+    db_type: finalDbType === 'none' ? undefined : (finalDbType as typeof DEFAULT_CONFIG.db_type),
+    db_url_env: finalDbUrlEnv,
+    llm_key_env: finalLlmKeyEnv,
+    code_paths: finalCodePaths,
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  console.log('✓ Created .domainlens/config.json');
+  console.log('\nSummary:');
+  console.log(`  Database type:   ${finalDbType}`);
+  console.log(`  DB URL env var:  ${finalDbUrlEnv}`);
+  console.log(`  LLM key env var: ${finalLlmKeyEnv}`);
+  console.log(`  Code paths:      ${finalCodePaths.join(', ')}`);
+}
+
+function detectDefaultDbType(): string {
+  const dbUrl = process.env[DEFAULT_CONFIG.db_url_env];
+  if (dbUrl?.startsWith('mysql://')) return 'mysql';
+  if (dbUrl?.startsWith('postgres://') || dbUrl?.startsWith('postgresql://')) return 'postgres';
+  return DEFAULT_CONFIG.db_type;
+}
+
+function detectCodePaths(projectPath: string): string[] {
+  const candidates = ['src/', 'app/', 'lib/'];
+  return candidates.filter((dir) => fs.existsSync(path.join(projectPath, dir)));
 }
 
 function updateGitignore(gitignorePath: string): void {

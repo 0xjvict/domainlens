@@ -438,7 +438,7 @@
         "Typecheck passes"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -468,6 +468,36 @@
         "Typecheck passes"
       ],
       "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Add result cap to glob_files tool to prevent token explosion",
+      "description": "As a DomainLens user, I want glob_files to cap its output at 500 results and show a truncation notice, so that broad patterns like **/*.php on large codebases don't dump thousands of paths into the agent context and cause token accumulation issues.",
+      "acceptanceCriteria": [
+        "In src/agent/tools.ts, add MAX_GLOB_RESULTS = 500 constant",
+        "globFiles stops collecting after MAX_GLOB_RESULTS matches",
+        "When results are truncated, a final line is appended: '(truncated — showing 500 of N total matches. Use a more specific pattern.)'",
+        "When results are not truncated, no notice is added",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Fix hardcoded noEnrich: true in runDiscoverAgent ignoring per-concept skipEnrich logic",
+      "description": "As a DomainLens user running discover --agent, I want concepts that the agent returned without states/business_rules/related_concepts to be enriched via enrichDomainConcept(), and only concepts with those fields populated to skip enrichment, so that --agent produces richer skills instead of always generating skeletons.",
+      "acceptanceCriteria": [
+        "In runDiscoverAgent in src/commands/discover.ts, replace noEnrich: true with noEnrich: options.noEnrich ?? false when calling generateDomainSkills",
+        "convertAgentConcepts already sets skipEnrich: true when agent provided states/business_rules/related_concepts — this per-concept flag continues to take precedence over noEnrich in generateDomainSkills",
+        "Running discover --agent without --no-enrich calls enrichDomainConcept() for concepts where skipEnrich is false",
+        "Running discover --agent --no-enrich skips enrichment for all concepts (existing behavior preserved for explicit opt-out)",
+        "Typecheck passes"
+      ],
+      "priority": 31,
       "passes": false,
       "notes": ""
     }

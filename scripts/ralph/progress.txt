@@ -366,3 +366,18 @@
   - The pg library throws "received invalid response: 4a" when connecting to MySQL — unique enough for reliable detection
   - Error message strings from pg might vary by version; both 'invalid response' and '4a' are checked for robustness
 ---
+
+## 2026-06-15 18:30 - US-027
+- Added interactive wizard mode to domainlens init when config.json doesn't exist and no --yes flag
+- Wizard prompts: database type (auto-detected from DATABASE_URL), DB URL env var, LLM key env var, code paths (auto-detected from src/ app/ lib/)
+- Auto-detect code_paths checks which of src/, app/, lib/ exist in project root
+- --yes flag skips wizard and writes defaults (for CI/scripted use)
+- Existing config.json preserves current skip behavior
+- Summary printed after config is written
+- Files changed: src/cli.ts, src/commands/init.ts
+- **Learnings for future iterations:**
+  - runInit is now async (returns Promise<void>) due to readline prompts — care needed if any caller expects synchronous behavior
+  - The DEFAULT_CONFIG object is used as a base, then wizard answers override specific fields via spread
+  - detectDefaultDbType reads DATABASE_URL from env to pre-fill the db_type question
+  - detectCodePaths uses fs.existsSync checks — fast and deterministic
+---
