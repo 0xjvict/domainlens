@@ -260,3 +260,14 @@
   - The multi-session fallback is silent: if mapping returns ≤1 group, we just call runSingleSession without logging a phase message
   - All sub-sessions run sequentially (not in parallel) to avoid rate limits and context contention
 ---
+
+## 2026-06-15 16:00 - US-018
+- Added agent_parallel_sessions?: number to DomainLensConfig type in src/types.ts
+- Added agent_parallel_sessions: 3 default to init.ts DEFAULT_CONFIG
+- Added config field documentation in the comment block
+- Files changed: src/types.ts, src/commands/init.ts
+- **Learnings for future iterations:**
+  - Config fields follow a 3-step pattern: type definition in types.ts → comment block + default in init.ts
+  - The comment block above DEFAULT_CONFIG is the single source of truth for field documentation
+  - agent_parallel_sessions defaults to 3, consistent with the PRD spec
+---

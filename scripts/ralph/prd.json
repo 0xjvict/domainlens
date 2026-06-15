@@ -282,6 +282,36 @@
       "priority": 17,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Add agent_parallel_sessions config field",
+      "description": "As a developer configuring DomainLens, I want a new config field agent_parallel_sessions (default 3) that controls how many sub-agent sessions run in parallel during multi-session exploration, so that I can tune parallelism vs. rate limit pressure.",
+      "acceptanceCriteria": [
+        "DomainLensConfig type in src/types.ts includes agent_parallel_sessions?: number",
+        "init command generates config.json with agent_parallel_sessions: 3",
+        "Field documented in the config table comment block",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Parallelize sub-agent sessions with a concurrency pool",
+      "description": "As a DomainLens user, I want the Phase 2 sub-agent sessions to run in parallel using a concurrency pool limited by agent_parallel_sessions, so that exploration of large codebases is faster without overwhelming the LLM provider's rate limits.",
+      "acceptanceCriteria": [
+        "Phase 2 runs sub-agents concurrently using Promise.all() with a pool that caps at agent_parallel_sessions concurrent sessions",
+        "Pool implemented with p-limit or an equivalent lightweight semaphore (no new heavy dependency)",
+        "Progress output updated: '▶ Phase 2: Exploring N batches (up to X parallel)...' and per-batch '  ✓ Batch 2/5 — 7 concepts found'",
+        "429 rate limit errors are still handled by the existing callWithRetry backoff per sub-session",
+        "Overall result is identical to sequential execution (order of concepts in final list may differ)",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

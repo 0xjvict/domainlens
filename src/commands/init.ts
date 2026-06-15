@@ -11,6 +11,7 @@ import path from 'node:path';
 //   agent_max_context_tokens — max tokens per agent session
 //   agent_batch_size        — files per sub-agent in multi-session mode (default: 40)
 //   agent_strategy          — 'single' | 'multi' exploration strategy (default: 'multi')
+//   agent_parallel_sessions — concurrent sub-agent sessions (default: 3)
 //   code_paths              — directories to scan for code signals
 //   docs_paths              — paths to scan for documentation
 //   rules_paths             — paths to scan for business rule candidates
@@ -30,6 +31,7 @@ const DEFAULT_CONFIG = {
   agent_max_context_tokens: 100000,
   agent_batch_size: 40,
   agent_strategy: 'multi',
+  agent_parallel_sessions: 3,
   code_paths: ['src/', 'app/'],
   docs_paths: ['docs/', 'README.md'],
   rules_paths: ['src/services/', 'src/validators/', 'src/policies/'],

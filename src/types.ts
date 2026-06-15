@@ -10,6 +10,7 @@ export interface DomainLensConfig {
   agent_max_context_tokens?: number;
   agent_batch_size?: number;
   agent_strategy?: 'single' | 'multi';
+  agent_parallel_sessions?: number;
   code_paths: string[];
   docs_paths: string[];
   rules_paths?: string[];
