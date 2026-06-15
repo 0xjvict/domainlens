@@ -99,4 +99,5 @@ export interface SchemaCache {
   extracted_at: string;
   tables: TableInfo[];
   enums: EnumType[];
+  schema_hash?: string;
 }

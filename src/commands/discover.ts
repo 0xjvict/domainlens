@@ -71,7 +71,7 @@ async function runDiscoverStandard(
   options: DiscoverOptions
 ): Promise<void> {
   console.log('▶ Step 1/8: Extracting database schema...');
-  const schema = await extractSchema(config, projectPath);
+  const schema = await extractSchema(config, projectPath, options.force);
   if (schema) {
     console.log(`  ✓ ${schema.tables.length} tables, ${schema.enums.length} enums`);
   }
@@ -231,7 +231,7 @@ async function runDiscoverAgent(
   options: DiscoverOptions
 ): Promise<void> {
   console.log('▶ Step 1/5: Extracting database schema...');
-  const schema = await extractSchema(config, projectPath);
+  const schema = await extractSchema(config, projectPath, options.force);
   if (schema) {
     console.log(`  ✓ ${schema.tables.length} tables, ${schema.enums.length} enums`);
   }

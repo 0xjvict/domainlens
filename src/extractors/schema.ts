@@ -19,13 +19,14 @@ function inferDbType(config: DomainLensConfig): DbType {
 
 export async function extractSchema(
   config: DomainLensConfig,
-  projectPath: string = process.cwd()
+  projectPath: string = process.cwd(),
+  force?: boolean
 ): Promise<SchemaCache | null> {
   const dbType = inferDbType(config);
 
   if (dbType === 'mysql') {
-    return extractSchemaMysql(config, projectPath);
+    return extractSchemaMysql(config, projectPath, force);
   }
 
-  return extractSchemaPostgres(config, projectPath);
+  return extractSchemaPostgres(config, projectPath, force);
 }

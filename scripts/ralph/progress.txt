@@ -498,3 +498,17 @@
   - In-memory grouping by table_name keeps the same output structure without changing any callers
   - Both extractors share the same pattern: bulk fetch → filter by table_name → assemble TableInfo[]
 ---
+
+## 2026-06-15 21:15 - US-038
+- Added schema_hash?: string to SchemaCache interface in types.ts
+- Added force parameter to extractSchema (dispatcher) and both extractors
+- In extractSchemaMysql: before full extraction, runs a lightweight fingerprint query on all non-system databases, SHA-256 hashes the sorted rows, compares against cached schema_hash — if match, returns cache immediately
+- In extractSchemaPostgres: same approach with a fingerprint query excluding pg_catalog/information_schema schemas
+- After full extraction, schema_hash is computed from the extracted TableInfo[] data and written to latest.json
+- Passing --force to discover bypasses the hash check and always re-extracts
+- Files changed: src/types.ts, src/extractors/schema.ts, src/extractors/schemaMysql.ts, src/extractors/schemaPostgres.ts, src/commands/discover.ts
+- **Learnings for future iterations:**
+  - The fingerprint query needs to be kept in sync with the full extraction — same columns must be covered for reliable change detection
+  - MySQL uses `IN (?)` with dynamic placeholder generation; Postgres uses `NOT IN ('pg_catalog', 'information_schema')`
+  - schema_hash is computed from the extracted data, not from the fingerprint, to ensure consistency — the fingerprint is only for the cache check
+---

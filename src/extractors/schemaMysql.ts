@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import mysql from 'mysql2/promise';
 import type { DomainLensConfig, SchemaCache, TableInfo, EnumType } from '../types.js';
 
@@ -11,7 +12,8 @@ interface EnumColumnInfo {
 
 export async function extractSchemaMysql(
   config: DomainLensConfig,
-  projectPath: string
+  projectPath: string,
+  force?: boolean
 ): Promise<SchemaCache | null> {
   const dbUrl = process.env[config.db_url_env];
 
@@ -32,6 +34,31 @@ export async function extractSchemaMysql(
   try {
     const databases = await getDatabases(connection);
 
+    if (!force) {
+      const existing = loadExistingCache(projectPath);
+      if (existing) {
+        const phs = databases.map(() => '?').join(',');
+        const [fpRows] = await connection.query<mysql.RowDataPacket[]>(
+          `SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.column_type,
+                  kcu.referenced_table_name
+           FROM information_schema.columns c
+           LEFT JOIN information_schema.key_column_usage kcu
+             ON c.table_schema = kcu.table_schema
+            AND c.table_name = kcu.table_name
+            AND c.column_name = kcu.column_name
+           WHERE c.table_schema IN (${phs})
+           ORDER BY c.table_schema, c.table_name, c.column_name`,
+          databases
+        );
+        const hash = crypto.createHash('sha256').update(JSON.stringify(fpRows)).digest('hex');
+
+        if (existing.schema_hash === hash) {
+          console.log('  ✓ Schema unchanged — using cached schema');
+          return existing;
+        }
+      }
+    }
+
     const allTables: TableInfo[] = [];
     const allEnums: EnumType[] = [];
 
@@ -48,10 +75,24 @@ export async function extractSchemaMysql(
       allTables.push(...tables);
     }
 
+    const fingerprintRows = allTables.flatMap((t) =>
+      t.columns.map((c) => ({
+        table_schema: t.schema,
+        table_name: t.name,
+        column_name: c.name,
+        data_type: c.type,
+        column_type: c.type,
+        referenced_table_name: t.foreign_keys.find((fk) => fk.column === c.name)?.references_table ?? null,
+      }))
+    );
+    fingerprintRows.sort((a, b) => a.table_name.localeCompare(b.table_name) || a.column_name.localeCompare(b.column_name));
+    const hash = crypto.createHash('sha256').update(JSON.stringify(fingerprintRows)).digest('hex');
+
     const cache: SchemaCache = {
       extracted_at: new Date().toISOString(),
       tables: allTables,
       enums: allEnums,
+      schema_hash: hash,
     };
 
     const schemasDir = path.join(projectPath, '.domainlens', 'schemas');
