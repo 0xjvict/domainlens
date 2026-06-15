@@ -119,19 +119,25 @@ type ToolHandler = (args: ToolArgs) => string;
 
 export function createToolHandlers(
   config: DomainLensConfig,
-  projectPath: string
+  projectPath: string,
+  fileFilter?: string[]
 ): Record<string, ToolHandler> {
   return {
     list_directory: (args) =>
       listDirectory(String(args['path'] ?? ''), config, projectPath),
     glob_files: (args) =>
       globFiles(String(args['pattern'] ?? ''), config, projectPath),
-    read_file: (args) =>
-      readFile(
-        String(args['path'] ?? ''),
+    read_file: (args) => {
+      const filePath = String(args['path'] ?? '');
+      if (fileFilter && !fileFilter.includes(filePath)) {
+        return 'Error: file not in assigned batch';
+      }
+      return readFile(
+        filePath,
         args['offset'] !== undefined ? Number(args['offset']) : undefined,
         projectPath
-      ),
+      );
+    },
     search_text: (args) =>
       searchText(
         String(args['query'] ?? ''),

@@ -6,7 +6,7 @@ import type { DomainLensConfig, AgentConcept, Signal } from '../types.js';
 import { getToolDefinitions, createToolHandlers } from './tools.js';
 
 export interface RunAgentOptions {
-  // reserved for future use
+  file_filter?: string[];
 }
 
 export async function runAgent(
@@ -23,6 +23,7 @@ export async function runAgent(
   const model = config.explorer_model ?? config.llm_model;
   const agentMaxFiles = config.agent_max_files ?? 150;
   const agentMaxContextTokens = config.agent_max_context_tokens ?? 100000;
+  const fileFilter = _options.file_filter;
 
   const MIN_FILE_READS = 5;
 
@@ -32,9 +33,9 @@ export async function runAgent(
   });
 
   const schemaJson = readSchemaJson(projectPath);
-  const systemPrompt = buildSystemPrompt(config, existingSkills, schemaJson, MIN_FILE_READS);
+  const systemPrompt = buildSystemPrompt(config, existingSkills, schemaJson, MIN_FILE_READS, fileFilter);
   const tools = buildAllTools();
-  const toolHandlers = createToolHandlers(config, projectPath);
+  const toolHandlers = createToolHandlers(config, projectPath, fileFilter);
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
@@ -291,7 +292,8 @@ function buildSystemPrompt(
   config: DomainLensConfig,
   existingSkills: string[],
   schemaJson: string,
-  minFileReads: number
+  minFileReads: number,
+  fileFilter?: string[]
 ): string {
   const skillsList =
     existingSkills.length > 0
@@ -314,6 +316,7 @@ ${codePathsList}
 
 ## Ignore List (do not read these paths)
 ${ignoreList}
+${fileFilter ? `\n## Assigned Files (only read these files)\n${fileFilter.map((f) => `  - ${f}`).join('\n')}\n\nYou are assigned to explore these files. Do NOT read files outside this list.` : ''}
 
 ## Instructions
 1. Use list_directory to understand the project structure, then read actual source code files with read_file — listing directories alone is NOT enough to discover concepts.

@@ -216,3 +216,16 @@
   - Fallback walkdir grouping uses the same partition logic as the LLM path, ensuring consistent output format
   - File paths are collected from glob_files tool results (not list_directory) to get concrete file paths, not just directory names
 ---
+
+## 2026-06-15 13:00 - US-015
+- Added file_filter?: string[] to RunAgentOptions interface in runner.ts
+- Updated createToolHandlers in tools.ts to accept optional fileFilter parameter
+- read_file handler now checks fileFilter and returns 'Error: file not in assigned batch' for paths outside the filter
+- list_directory and glob_files are NOT restricted — agents can still navigate to find their files
+- System prompt includes "## Assigned Files" section with the file list and "You are assigned to explore these files" instruction when file_filter is set
+- Files changed: src/agent/runner.ts, src/agent/tools.ts
+- **Learnings for future iterations:**
+  - createToolHandlers is also used by mapper.ts — the fileFilter parameter is optional, so existing callers (mapper, standard agent) continue to work unchanged
+  - The read_file restriction is applied in the handler, not in tool definitions — so the agent still sees read_file as available but gets a clear error message
+  - file_filter uses exact path matching (fileFilter.includes) — paths must match the format returned by glob_files exactly
+---
