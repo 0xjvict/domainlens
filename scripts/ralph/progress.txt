@@ -113,4 +113,23 @@
   - The agent path still passes noEnrich: true to generateDomainSkills, but the skipEnrich flag enables selective per-concept skip for enrichment
 ---
 
+## 2026-06-15 17:15 - US-008
+- Created src/utils/fileConceptMap.ts with readFileConceptMap, writeFileConceptMap, and updateFileConceptMap utilities
+- v2 format: { version: 2, files: { [path]: { lastProcessed, concepts: [{ name, type }] } } }
+- readFileConceptMap ignores non-v2 formats (returns empty map), satisfying the "v1 not read" requirement
+- updateFileConceptMap merges new entries into existing map, deduplicating concepts by name+type
+- Integrated into runDiscoverStandard: collects domain concept sources from signals and business rule enforced_in paths
+- Integrated into runDiscoverAgent: collects domain concept sources from agent signals
+- Map is written to .domainlens/file-concept-map.json at end of each discover run
+- .gitignore entry already present in init.ts (no change needed)
+- Files changed: src/utils/fileConceptMap.ts (new), src/commands/discover.ts
+- **Learnings for future iterations:**
+  - Domain concepts use signal.source for file paths; business rules use enforced_in — both must be collected for a complete map
+  - LLM-inferred concepts (from pre-scan) have no signals or source files, so they don't appear in the file-concept-map
+  - The map uses relative paths from project root — matching git diff output in US-009
+  - Deduplication uses `${name}:${type}` as the unique key to prevent duplicates when the same file triggers multiple signals for the same concept
+---
+
+
+
 

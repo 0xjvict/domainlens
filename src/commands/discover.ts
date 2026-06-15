@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { DomainLensConfig, AgentConcept } from '../types.js';
+import type { DomainLensConfig, AgentConcept, BusinessRule } from '../types.js';
 import { extractSchema } from '../extractors/schema.js';
 import { scanSqlExamples, scanConstantsAndEnums } from '../extractors/codeScanner.js';
 import { scanOrm, type OrmType } from '../extractors/ormScanner.js';
@@ -14,6 +14,7 @@ import { preScanConcepts, mergeConcepts } from '../llm/preScan.js';
 import { detectCandidates, extractBusinessRules } from '../extractors/businessRules.js';
 import { generateBusinessRulesSkills } from '../skills/businessRulesSkills.js';
 import { generateRelationsMap } from '../skills/relationsSkills.js';
+import { updateFileConceptMap } from '../utils/fileConceptMap.js';
 
 export interface DiscoverOptions {
   dryRun?: boolean;
@@ -137,10 +138,11 @@ async function runDiscoverStandard(
 
   console.log('▶ Step 8/8: Extracting business rules...');
   const candidates = detectCandidates(config, projectPath);
+  let businessRules: BusinessRule[] = [];
   if (candidates.length > 0) {
     console.log(`  ✓ ${candidates.length} candidate files detected`);
     const batchSize = config.rules_batch_size ?? 10;
-    const businessRules = await extractBusinessRules(candidates, config, batchSize);
+    businessRules = await extractBusinessRules(candidates, config, batchSize);
     if (businessRules.length > 0) {
       console.log(`  ✓ ${businessRules.length} business rules extracted`);
       const bizResult = await generateBusinessRulesSkills(businessRules, config, projectPath, {
@@ -177,6 +179,24 @@ async function runDiscoverStandard(
     console.log('\n▶ Embedding pipeline...');
     embedResult = await runEmbeddings(projectPath, config);
   }
+
+  console.log('▶ Updating file-concept-map...');
+  const fileEntries: Record<string, { concepts: { name: string; type: string }[] }> = {};
+  for (const c of concepts) {
+    for (const sig of c.signals) {
+      if (sig.source) {
+        if (!fileEntries[sig.source]) fileEntries[sig.source] = { concepts: [] };
+        fileEntries[sig.source].concepts.push({ name: c.concept, type: 'domain' });
+      }
+    }
+  }
+  for (const rule of businessRules) {
+    for (const file of rule.enforced_in) {
+      if (!fileEntries[file]) fileEntries[file] = { concepts: [] };
+      fileEntries[file].concepts.push({ name: rule.name, type: 'business_rule' });
+    }
+  }
+  updateFileConceptMap(projectPath, fileEntries);
 
   console.log('\n✓ Discovery complete');
 
@@ -238,6 +258,18 @@ async function runDiscoverAgent(
     console.log('\n▶ Embedding pipeline...');
     await runEmbeddings(projectPath, config);
   }
+
+  console.log('▶ Updating file-concept-map...');
+  const fileEntries: Record<string, { concepts: { name: string; type: string }[] }> = {};
+  for (const c of concepts) {
+    for (const sig of c.signals) {
+      if (sig.source) {
+        if (!fileEntries[sig.source]) fileEntries[sig.source] = { concepts: [] };
+        fileEntries[sig.source].concepts.push({ name: c.concept, type: 'domain' });
+      }
+    }
+  }
+  updateFileConceptMap(projectPath, fileEntries);
 
   console.log('\n✓ Discovery complete');
   console.log(`  ${totalCreated} skills created (agent-discovered, ai-generated), ${totalUpdated} skills updated`);
