@@ -344,7 +344,7 @@ export function createServer(projectPath: string): McpServer {
         const fm = parseFrontmatter(content);
         const relatedConcepts = parseTags(fm.related_concepts);
 
-        if (!relatedConcepts.some((c) => c.toLowerCase() === searchConcept)) continue;
+        if (!relatedConcepts.some((c) => toSkillFilename(c).toLowerCase() === searchConcept)) continue;
 
         const body = content.replace(/^---[\s\S]*?---\n?/, '');
         const sections: Record<string, string> = {};
