@@ -22,6 +22,7 @@ export interface DiscoverOptions {
   noEnrich?: boolean;
   agent?: boolean;
   embeddings?: boolean;
+  relationsOnly?: boolean;
   project?: string;
 }
 
@@ -43,6 +44,18 @@ export async function runDiscover(options: DiscoverOptions = {}): Promise<void> 
   }
 
   console.log('DomainLens discover starting...\n');
+
+  if (options.relationsOnly) {
+    const domainDir = path.join(projectPath, 'skills', 'domain');
+    if (!fs.existsSync(domainDir) || fs.readdirSync(domainDir).filter((f) => f.endsWith('.md') && f !== 'relations.md').length === 0) {
+      console.error('✗ No domain skills found. Run full `domainlens discover` first to generate domain concepts.');
+      process.exit(1);
+    }
+    console.log('▶ Regenerating relations map from existing skills...');
+    await generateRelationsMap(projectPath, { dryRun: options.dryRun, force: options.force });
+    console.log('\n✓ Relations map updated');
+    return;
+  }
 
   if (options.agent) {
     await runDiscoverAgent(projectPath, config, options);

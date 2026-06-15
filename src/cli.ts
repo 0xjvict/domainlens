@@ -43,6 +43,7 @@ program
   .option('--no-enrich', 'Skip LLM enrichment and write skeleton skills only')
   .option('--agent', 'Use AI agent to discover domain concepts (replaces scanner + heuristics)')
   .option('--embeddings', 'Also run the embedding pipeline after skill generation')
+  .option('--relations-only', 'Regenerate relations.md from existing skills without re-running extraction')
   .option('--project <path>', 'Path to the project (default: current directory)')
   .action((opts) => {
     runDiscover({
@@ -51,6 +52,7 @@ program
       noEnrich: opts.enrich === false,
       agent: opts.agent,
       embeddings: opts.embeddings,
+      relationsOnly: opts.relationsOnly,
       project: opts.project,
     }).catch(errExit);
   });

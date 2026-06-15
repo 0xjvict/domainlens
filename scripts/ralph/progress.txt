@@ -178,3 +178,14 @@
   - The watch command uses the same error handling pattern as other commands (try/catch + errExit)
   - watch_interval_seconds defaults to 30 in init.ts DEFAULT_CONFIG, already aligned with config type
 ---
+
+## 2026-06-15 12:17 - US-012
+- Added --relations-only option to discover: early-exit path checks domain skills exist (errors with clear message if not), then calls generateRelationsMap and returns
+- Added relationsOnly to DiscoverOptions interface
+- Added watch status to status command: checks git availability and shows "domainlens watch ✓ (polling every 30s)" or "domainlens watch — (git not available)"
+- Files changed: src/cli.ts, src/commands/discover.ts, src/commands/status.ts
+- **Learnings for future iterations:**
+  - relations-only error check filters out relations.md when counting domain skills to avoid false positive
+  - Watch status reuses the same git check pattern (git --version + git rev-parse --git-dir) as incremental.ts
+  - The status command now uses execSync for git check — keep the import in sync
+---

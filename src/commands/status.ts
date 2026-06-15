@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import Database from 'better-sqlite3';
 import type { DomainLensConfig, SchemaCache } from '../types.js';
 import { scanSqlExamples, scanConstantsAndEnums } from '../extractors/codeScanner.js';
@@ -92,6 +93,16 @@ export function runStatus(options: StatusOptions = {}): void {
     console.log(`  Config:     .domainlens/config.json ✓${modelInfo}`);
   } else {
     console.log('  Config:     not found');
+  }
+
+  // Watch status
+  try {
+    execSync('git --version', { encoding: 'utf-8', stdio: 'ignore' });
+    execSync('git rev-parse --git-dir', { cwd: projectPath, encoding: 'utf-8', stdio: 'ignore' });
+    const interval = config?.watch_interval_seconds ?? 30;
+    console.log(`  Watch:      domainlens watch ✓ (polling every ${interval}s)`);
+  } catch {
+    console.log('  Watch:      domainlens watch — (git not available)');
   }
 
   // Model cache
