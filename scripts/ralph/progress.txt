@@ -510,5 +510,17 @@
 - **Learnings for future iterations:**
   - The fingerprint query needs to be kept in sync with the full extraction — same columns must be covered for reliable change detection
   - MySQL uses `IN (?)` with dynamic placeholder generation; Postgres uses `NOT IN ('pg_catalog', 'information_schema')`
-  - schema_hash is computed from the extracted data, not from the fingerprint, to ensure consistency — the fingerprint is only for the cache check
+   - schema_hash is computed from the extracted data, not from the fingerprint, to ensure consistency — the fingerprint is only for the cache check
+---
+
+## 2026-06-15 21:30 - US-039
+- Created src/utils/schemaSummary.ts with shared buildSchemaSummary() — compact format: `- table_name`, `    - column (type) → referenced_table` per line with FK suffix
+- Updated src/agent/runner.ts: replaced readSchemaJson() string dump with loadSchemaCache() + buildSchemaSummary() pipeline, added SchemaCache import
+- Updated src/llm/preScan.ts: replaced local buildSchemaSummary with import from ../utils/schemaSummary.js (removed ~10 lines of duplicate code)
+- Agent system prompt and LLM pre-scan both now receive the compact FK-aware schema format instead of raw JSON
+- Files changed: src/utils/schemaSummary.ts (new), src/agent/runner.ts, src/llm/preScan.ts, scripts/ralph/prd.json
+- **Learnings for future iterations:**
+  - buildSchemaSummary is now the single canonical schema formatter — any new caller should import from src/utils/schemaSummary.ts
+  - FK suffix uses `table.foreign_keys.find(f => f.column === c.name)` — requires foreign_keys to be populated in the SchemaCache TableInfo
+  - loadSchemaCache returns null (not '{}') on failure — caller must handle null gracefully (buildSchemaSummary does)
 ---

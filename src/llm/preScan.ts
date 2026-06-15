@@ -3,6 +3,7 @@ import path from 'node:path';
 import OpenAI from 'openai';
 import type { DomainLensConfig, SchemaCache } from '../types.js';
 import type { Signal, SignalType } from '../inferrer/heuristics.js';
+import { buildSchemaSummary } from '../utils/schemaSummary.js';
 
 export interface MergedConcept {
   concept: string;
@@ -131,17 +132,6 @@ function walkDirectory(
       }
     }
   }
-}
-
-function buildSchemaSummary(schema: SchemaCache | null): string {
-  if (!schema || schema.tables.length === 0) return '(no schema extracted)';
-
-  const lines: string[] = [];
-  for (const table of schema.tables) {
-    const columns = table.columns.map((c) => `    - ${c.name} (${c.type})`).join('\n');
-    lines.push(`- ${table.name}\n${columns}`);
-  }
-  return lines.join('\n');
 }
 
 export function mergeConcepts(

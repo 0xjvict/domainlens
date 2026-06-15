@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as readline from 'node:readline';
 import OpenAI from 'openai';
-import type { DomainLensConfig, AgentConcept, Signal } from '../types.js';
+import type { DomainLensConfig, AgentConcept, Signal, SchemaCache } from '../types.js';
+import { buildSchemaSummary } from '../utils/schemaSummary.js';
 import { getToolDefinitions, createToolHandlers } from './tools.js';
 import { buildFileGroups } from './mapper.js';
 import { consolidateConcepts } from './consolidator.js';
@@ -101,8 +102,9 @@ async function runSingleSession(
     apiKey,
   });
 
-  const schemaJson = readSchemaJson(projectPath);
-  const systemPrompt = buildSystemPrompt(config, existingSkills, schemaJson, MIN_FILE_READS, fileFilter);
+  const schema = loadSchemaCache(projectPath);
+  const schemaSummary = buildSchemaSummary(schema);
+  const systemPrompt = buildSystemPrompt(config, existingSkills, schemaSummary, MIN_FILE_READS, fileFilter);
   const tools = buildAllTools();
   const toolHandlers = createToolHandlers(config, projectPath, fileFilter);
 
@@ -350,12 +352,12 @@ function buildFinishTool(): OpenAI.Chat.ChatCompletionTool {
   };
 }
 
-function readSchemaJson(projectPath: string): string {
+function loadSchemaCache(projectPath: string): SchemaCache | null {
   const schemaPath = path.join(projectPath, '.domainlens', 'schemas', 'latest.json');
   try {
-    return fs.readFileSync(schemaPath, 'utf-8');
+    return JSON.parse(fs.readFileSync(schemaPath, 'utf-8')) as SchemaCache;
   } catch {
-    return '{}';
+    return null;
   }
 }
 
