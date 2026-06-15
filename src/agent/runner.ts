@@ -38,12 +38,12 @@ async function runMultiSession(
   existingSkills: string[],
   options: RunAgentOptions
 ): Promise<AgentConcept[]> {
-  console.log('▶ Phase 1: Mapping files...');
-  let fileGroups: string[][];
+  console.log('▶ Phase 1: Grouping files...');
+  let fileGroups: string[][] = [];
   try {
-    fileGroups = await buildFileGroups(config, projectPath);
+    fileGroups = buildFileGroups(config, projectPath);
   } catch {
-    console.log('  Mapping failed — falling back to single-session exploration');
+    console.log('  File grouping failed — falling back to single-session exploration');
     return runSingleSession(config, projectPath, existingSkills, options);
   }
 

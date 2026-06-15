@@ -7,6 +7,7 @@
 - Section extraction: `extractSection(body, 'SectionName')` regex `## SectionName\n(content)(?=\n## |\n---|$)` works across all skill file types
 - Relations.md parsing: split on `\n(?=## )` for top-level sections; `### Name` for sub-sections within Concept Relations and Cross-Concept Rules
 - MCP tool pattern: `server.tool(name, description, { params }, handler)` always returns `{ content: [{ type: 'text', text: JSON.stringify(...) }] }`
+- Deterministic file grouping: `buildFileGroups` uses `collectAllFiles` + `computeGroupKey` + `partitionIntoGroups` — synchronous walkdir, no API calls
 
 ## 2026-06-15 15:00 - US-001
 - Added rules_paths, rules_batch_size, watch_interval_seconds to DomainLensConfig type
@@ -523,4 +524,18 @@
   - buildSchemaSummary is now the single canonical schema formatter — any new caller should import from src/utils/schemaSummary.ts
   - FK suffix uses `table.foreign_keys.find(f => f.column === c.name)` — requires foreign_keys to be populated in the SchemaCache TableInfo
   - loadSchemaCache returns null (not '{}') on failure — caller must handle null gracefully (buildSchemaSummary does)
+---
+
+## 2026-06-15 21:45 - US-040
+- Removed attemptLlmMapping, buildMappingTools, getExploredDirs functions and MAPPING_MAX_TOKENS/MAPPING_MAX_ITERATIONS constants from mapper.ts
+- Removed OpenAI import from mapper.ts — no more API calls in Phase 1
+- Made buildFileGroups a synchronous deterministic function that calls collectAllFiles + partitionIntoGroups directly
+- Removed buildFallbackGroups (logic inlined into buildFileGroups)
+- Updated runner.ts Phase 1 messages: "Mapping files..." → "Grouping files..." and "Mapping failed" → "File grouping failed"
+- Removed `await` from buildFileGroups call (now sync)
+- Files changed: src/agent/mapper.ts, src/agent/runner.ts, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - buildFileGroups is now synchronous — any caller must not await it
+  - computeGroupKey, partitionIntoGroups, collectAllFiles, walkCollectFiles all stay as private helpers
+  - No CLAUDE.md files exist in this project (confirmed via glob)
 ---

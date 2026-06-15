@@ -624,6 +624,25 @@
       "priority": 39,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "Replace LLM mapping in Phase 1 with deterministic file grouping",
+      "description": "As a DomainLens user running discover --agent, I want Phase 1 file grouping to be deterministic and instant instead of running up to 5 LLM API round-trips, so that the multi-session exploration starts faster and at lower cost without any loss in grouping quality.",
+      "acceptanceCriteria": [
+        "Remove attemptLlmMapping, buildMappingTools, getExploredDirs functions from src/agent/mapper.ts",
+        "Remove MAPPING_MAX_TOKENS and MAPPING_MAX_ITERATIONS constants from src/agent/mapper.ts",
+        "Remove the OpenAI import from src/agent/mapper.ts",
+        "Collapse buildFallbackGroups into buildFileGroups: buildFileGroups becomes a pure synchronous deterministic function that walks code_paths via collectAllFiles, applies computeGroupKey, and splits oversized groups — no async, no API calls",
+        "Remove partitionIntoGroups as a separate function (inline its logic into buildFileGroups or keep as private helper)",
+        "In src/agent/runner.ts, update Phase 1 log from '▶ Phase 1: Mapping files...' to '▶ Phase 1: Grouping files...'",
+        "In src/agent/runner.ts, update the try/catch fallback message from 'Mapping failed — falling back to single-session exploration' to 'File grouping failed — falling back to single-session exploration'",
+        "runMultiSession flow, agent_strategy config, sub-agent sessions, and Phase 2/3 are unchanged",
+        "Typecheck passes"
+      ],
+      "priority": 40,
+      "passes": true,
+      "notes": ""
     }
   ]
 }
