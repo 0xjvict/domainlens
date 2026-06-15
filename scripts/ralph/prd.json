@@ -1,148 +1,207 @@
 {
   "project": "DomainLens",
-  "branchName": "develop",
-  "description": "DomainLens – Agent-based domain explorer (FR-008). Adds `domainlens discover --agent` mode where an AI agent actively navigates the codebase using tool calls (read_file, list_directory, glob_files, search_text, read_schema, finish) to discover domain concepts by reasoning, instead of regex and heuristics. Replaces code scanning and heuristic inference steps only; schema extraction, docs, and rules skills remain deterministic.",
+  "branchName": "ralph/domainlens-v2",
+  "description": "DomainLens v2 — LLM pre-scan, structured enrichment, business rules extraction, relations synthesis, 3 new MCP tools, incremental rebuild/watch, agent mode extensions, and CLI polish",
   "userStories": [
     {
-      "id": "US-101",
-      "title": "Extend DomainLensConfig with agent explorer fields",
-      "description": "As a developer, I need the config schema and `domainlens init` to support agent explorer settings so that users can configure the explorer model and safety limits per project.",
+      "id": "US-001",
+      "title": "Add new config fields and restructure skill output directories",
+      "description": "As a developer configuring DomainLens, I want the config type and init defaults to include rules_paths, rules_batch_size, and watch_interval_seconds, so that business rule extraction and watch behavior are configurable. I also want technical rules output to move from skills/rules/ to skills/rules/technical/ to separate them from business rules.",
       "acceptanceCriteria": [
-        "DomainLensConfig in src/types.ts extended with optional fields: explorer_model?: string, agent_max_files?: number, agent_max_context_tokens?: number",
-        "`domainlens init` writes agent_max_files: 150 and agent_max_context_tokens: 100000 to the generated config.json (explorer_model omitted from default — it is optional)",
-        "domainlens init is idempotent — running twice does not duplicate or overwrite existing values",
+        "DomainLensConfig type in src/types.ts includes rules_paths, rules_batch_size, watch_interval_seconds",
+        "init command generates config.json with the new fields and correct defaults",
+        "Technical rules (naming-conventions, soft-delete, performance) are written to skills/rules/technical/ instead of skills/rules/",
+        "Business rules still use skills/rules/business/ (no change needed, path is new)",
+        "All internal references to skill paths are updated consistently",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Implemented in US-026 on develop branch."
+      "notes": ""
     },
     {
-      "id": "US-102",
-      "title": "Implement agent tools module (src/agent/tools.ts)",
-      "description": "As a developer, I need a tools module that implements the filesystem and schema tools the agent can call, plus their OpenAI function call schemas, so that the agent loop can execute tool calls locally.",
+      "id": "US-002",
+      "title": "Implement LLM pre-scan for implicit concept discovery",
+      "description": "As a DomainLens user, I want the discover pipeline to run an LLM pre-scan step before code scanning, using the file tree + schema summary to discover implicit business concepts (like RecurringOrder, ChurnedCustomer) that have no direct table in the database. The pre-scan output must be merged with heuristic-derived concepts.",
       "acceptanceCriteria": [
-        "Creates src/agent/tools.ts with 6 tool implementations: list_directory(path), glob_files(pattern), read_file(path, offset?), search_text(query, path?), read_schema(), finish(concepts)",
-        "list_directory: lists files and subdirectories under the given path; skips entries matching the ignore list from config; returns relative paths",
-        "glob_files: finds files matching a glob pattern within code_paths; skips ignored directories",
-        "read_file: reads a file returning up to 500 lines starting from offset (default 0); returns { content, totalLines, hasMore } so the agent knows if pagination is needed",
-        "search_text: searches for a text query across files in code_paths using substring match; returns [{ file, line, text }] (max 50 results)",
-        "read_schema: reads and returns the content of .domainlens/schemas/latest.json; returns null if file does not exist",
-        "finish: accepts { concepts: AgentConcept[] } where AgentConcept = { concept: string, definition: string, signals: { type: string, detail: string }[] }; this tool terminates the session",
-        "Exports AGENT_TOOL_SCHEMAS (array of OpenAI-compatible function definitions) and executeAgentTool(name, args, context) where context = { projectPath, config }",
+        "New LLM pre-scan function sends file tree + schema summary to llm_model and returns JSON array of concept names",
+        "Pre-scan runs as step 3 in discover pipeline, before code scanner",
+        "Suprimido por --no-enrich",
+        "Entity merge algorithm implemented: normalized name comparison, heuristic-signaled concepts win, LLM-only concepts get source: ai-inferred with signals: []",
+        "Merged list feeds into enrichment step",
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "Implemented in US-027 on develop branch."
+      "passes": false,
+      "notes": ""
     },
     {
-      "id": "US-103",
-      "title": "Implement runAgentExplorer() session loop (src/agent/explorer.ts)",
-      "description": "As a developer, I need the core agentic loop that sends context and tools to the LLM via OpenRouter, executes tool calls locally, handles the soft file cap with user confirmation, enforces the context token limit, and returns AgentConcept[] on completion.",
+      "id": "US-003",
+      "title": "Split enrichment into structured enrichDomainConcept and enrichBusinessRule",
+      "description": "As a DomainLens user, I want the generic enrichConcept function replaced by two separate structured functions: enrichDomainConcept (with fixed sections: Definition, States & Lifecycle, Business Rules, Related Concepts, Common Query Patterns) and enrichBusinessRule (with sections: Rule Description, Trigger, Conditions, Effect, Where Enforced). Both use max_tokens 1500 and generate semantically-derived tags.",
       "acceptanceCriteria": [
-        "Creates src/agent/explorer.ts exporting runAgentExplorer(schema, existingSkillNames, config, projectPath): Promise<AgentConcept[]>",
-        "Uses the OpenAI client (same pattern as src/llm/openrouter.ts) with baseURL https://openrouter.ai/api/v1; model from config.explorer_model falling back to config.llm_model",
-        "System prompt (English) instructs the agent to explore code_paths, understand domain concepts, and call finish() when done",
-        "Initial user message includes: schema JSON (from schemas/latest.json), list of existing skill names to skip, code_paths and ignore list",
-        "Agentic loop: send messages to LLM → receive tool calls → execute via executeAgentTool() → append results → repeat until finish() is called or limits hit",
-        "Streams each tool call to console as it happens: '  → list_directory src/services/' and '  → Concept found: \"premium_customer\" (3 signals)' when finish() is called",
-        "Tracks files read count; at agent_max_files boundary: prints summary of concepts found so far, prompts 'Continue reading? [y/N]' (reads from stdin); if N, delivers partial results; if Y, continues same session",
-        "Tracks approximate context tokens (sum of message content lengths / 4); at agent_max_context_tokens: finalizes current concept, logs warning, returns partial results",
-        "On any API error: logs error, returns whatever AgentConcept[] were accumulated before the error",
-        "Returns AgentConcept[] from finish() arguments or partial results collected during the session",
+        "enrichDomainConcept() exists with structured prompt, fixed sections, max_tokens 1500",
+        "enrichBusinessRule() exists with structured prompt, fixed sections, max_tokens 1500",
+        "Tags are generated semantically by LLM, not derived from filename",
+        "Old generic enrichConcept is removed or no longer used for domain/rules",
+        "Domain skills output uses the v2 markdown format with all 5 sections",
+        "Business rule skills output uses the FR-006 markdown format",
+        "Re-execution behavior preserved: new skills get full content, existing get ## Detected Changes appended",
+        "--no-enrich and --dry-run flags work with both functions",
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "Implemented as US-028 on develop branch."
+      "passes": false,
+      "notes": ""
     },
     {
-      "id": "US-104",
-      "title": "Wire --agent flag into domainlens discover",
-      "description": "As an engineer, I want `domainlens discover --agent` to replace the regex scanner and heuristic inferrer with the agent explorer, while keeping all other pipeline steps intact.",
+      "id": "US-004",
+      "title": "Implement business rules extraction pipeline",
+      "description": "As a DomainLens user, I want the discover pipeline to automatically extract real business rules from service, validator, and policy files. The pipeline should have a deterministic first pass (regex candidate detection based on business vocabulary and conditional density) followed by a batch LLM extraction via extractBusinessRules() that produces structured JSON rules. Duplicate rules across batches should be merged by name with accumulated enforced_in paths.",
       "acceptanceCriteria": [
-        "DiscoverOptions in src/commands/discover.ts extended with agent?: boolean",
-        "--agent flag added to the discover CLI command in src/cli.ts",
-        "When --agent is set: steps 2 (code scanner), 3 (ORM scanner), and 5 (heuristic inferrer) are skipped; runAgentExplorer() is called after schema extraction, passing the extracted schema and list of existing skill names",
-        "AgentConcept[] from runAgentExplorer() is converted to DomainConcept[] compatible with generateDomainSkills(); the agent-provided definition is used directly (source: ai-generated); enrichConcept() is NOT called",
-        "generateRulesSkills() still runs deterministically using the extracted schema and any constants detected — it is not affected by --agent",
-        "--agent is compatible with --force (existing skills not passed to agent context), --dry-run (exploration runs, no writes), and --embeddings (pipeline runs after skill generation)",
-        "Progress output replaces steps 2-3-5 with: '▶ Step 2/4: Agent exploring codebase...' and streams tool calls",
-        "Summary line: 'X skills created (agent-discovered, ai-generated), Y skills updated'",
-        "If agent_max_files or agent_max_context_tokens are not set in config, defaults to 150 and 100000 respectively",
+        "Deterministic candidate detection scans rules_paths for high-density business conditionals",
+        "Candidate files are sent to extractBusinessRules() in batches of rules_batch_size",
+        "extractBusinessRules() returns structured JSON with name, description, trigger, conditions, effect, enforced_in, related_concepts",
+        "Duplicate rules across batches are merged by appending enforced_in values",
+        "Each unique rule passes through enrichBusinessRule() to produce the .md file",
+        "Business rules are written to skills/rules/business/",
+        "Integration into discover pipeline after domain enrichment",
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "Implemented on develop branch."
+      "passes": false,
+      "notes": ""
     },
     {
-      "id": "US-105",
-      "title": "Add db_type config field, URL inference, and mysql2 dependency",
-      "description": "As a developer, I want the config schema to support a `db_type` field so that DomainLens knows whether to connect to PostgreSQL or MySQL, with URL-based inference as fallback for backward compatibility.",
+      "id": "US-005",
+      "title": "Implement relations synthesis (relations.md)",
+      "description": "As a DomainLens user, I want the discover pipeline to generate a relations.md file that connects all domain concepts and business rules in a navigable knowledge map. The file should have 4 fixed sections: Domain Map, Concept Relations, Cross-Concept Rules, and Entry Points. It must be fully regenerated each time (never appended).",
       "acceptanceCriteria": [
-        "DomainLensConfig in src/types.ts extended with db_type?: 'postgres' | 'mysql'",
-        "DEFAULT_CONFIG in src/commands/init.ts includes db_type: 'postgres'",
-        "`domainlens init` generates config.json with db_type field",
-        "URL inference logic: if db_type is undefined, parse the DATABASE_URL protocol — postgresql:// → postgres, mysql:// → mysql — otherwise default to postgres",
-        "mysql2@^3.12 added to package.json dependencies",
+        "generateRelationsMap() function exists and reads all skills/domain/*.md and skills/rules/business/*.md",
+        "Produces skills/domain/relations.md with exactly 4 sections: Domain Map, Concept Relations, Cross-Concept Rules, Entry Points",
+        "Fully regenerated each time (not appended) — user can set source: human to skip",
+        "Runs at end of discover pipeline after enrichment and business rules",
+        "Can run standalone via --relations-only flag (handled in US-012)",
         "Typecheck passes"
       ],
-      "priority": 1,
-      "passes": true,
-      "notes": null
+      "priority": 5,
+      "passes": false,
+      "notes": ""
     },
     {
-      "id": "US-106",
-      "title": "Implement MySQL schema scanner and refactor schema dispatch",
-      "description": "As a developer, I need a MySQL schema scanner so that DomainLens can extract schema metadata from MySQL databases, and a dispatcher in schema.ts that routes to the correct driver based on db_type.",
+      "id": "US-006",
+      "title": "Add 3 new MCP tools: get_concept, get_rules_for_concept, get_relations",
+      "description": "As an AI agent using DomainLens via MCP, I want three new structured navigation tools: get_concept returns frontmatter + parsed sections (no raw markdown), get_rules_for_concept filters business rules by related_concepts in frontmatter (authoritative source), and get_relations returns the relevant portion of relations.md for a given concept. All tools should return structured not-found responses instead of errors.",
       "acceptanceCriteria": [
-        "Creates src/extractors/schemaMysql.ts exporting extractSchemaMysql(config): Promise<SchemaCache> using mysql2/promise",
-        "MySQL queries use information_schema for tables, columns (with COLUMN_COMMENT), PKs, FKs, CHECK/UNIQUE constraints",
-        "MySQL indexes extracted via SHOW INDEX FROM or information_schema.STATISTICS",
-        "MySQL enums parsed from COLUMN_TYPE where it contains ENUM(...)",
-        "MySQL schema field populated via SELECT DATABASE()",
-        "Refactors src/extractors/schema.ts as a dispatcher: reads db_type from config (or infers from URL), imports and calls the appropriate scanner",
-        "Existing PostgreSQL extraction in schema.ts is extracted to src/extractors/schemaPostgres.ts without behavior changes",
-        "Error handling is identical: on connection failure, logs warning and returns null (preserves existing cache)",
+        "get_concept(name) returns { name, type, source, tags, sections: Record<string, string> } or { name, found: false } if not found",
+        "get_rules_for_concept(concept, limit?) filters by related_concepts frontmatter, returns array of matching rules or empty array if none",
+        "get_relations(concept) returns { concept, direct_relations[], cross_concept_rules[] } or empty arrays if not found",
+        "get_relations filters relations.md content for concept-specific relations and cross-concept rules",
+        "All new tools registered in MCP server alongside existing 4 tools (total 7)",
+        "Not-found responses are structured (not errors) for all three tools",
         "Typecheck passes"
       ],
-      "priority": 2,
-      "passes": true,
-      "notes": null
+      "priority": 6,
+      "passes": false,
+      "notes": ""
     },
     {
-      "id": "US-107",
-      "title": "Add integration tests for MySQL schema extraction",
-      "description": "As a developer, I want tests that verify MySQL schema extraction works correctly, so that we catch regressions when modifying the MySQL scanner.",
+      "id": "US-007",
+      "title": "Extend agent mode interface and enrichment skip logic",
+      "description": "As a developer using --agent mode, I want the AgentConcept interface to include optional fields for states, business_rules (flat string array), and related_concepts. When the agent returns a concept with these fields populated, enrichDomainConcept should be skipped for that concept. The agent's initial context should only show domain and business_rule skills.",
       "acceptanceCriteria": [
-        "Creates test file for MySQL scanner (e.g. src/extractors/__tests__/schemaMysql.test.ts or similar)",
-        "Integration tests use @testcontainers/mysql to spin up a real MySQL container",
-        "Tests verify: table list, column extraction (types, nullable, default, comment), primary keys, foreign keys, indexes, CHECK/UNIQUE constraints, enum column detection",
-        "Unit tests verify error handling: unreachable database returns null without throwing",
-        "Tests are skippable by default (opt-in via flag or env var like RUN_INTEGRATION_TESTS) so CI does not require MySQL",
-        "All existing tests still pass",
+        "AgentConcept interface extended with states?: string[], business_rules?: string[], related_concepts?: string[]",
+        "Agent runner passes these fields through from finish() to the pipeline",
+        "Enrichment skip logic: if concept has at least one optional field populated, skip enrichDomainConcept",
+        "Agent initial context filters existing skills to only domain and business_rule types",
+        "Concepts without optional fields still go through enrichDomainConcept normally",
         "Typecheck passes"
       ],
-      "priority": 3,
-      "passes": true,
-      "notes": null
+      "priority": 7,
+      "passes": false,
+      "notes": ""
     },
     {
-      "id": "US-108",
-      "title": "Fix MySQL FK query — information_schema.constraint_column_usage does not exist in MySQL",
-      "description": "As a developer, I need the MySQL schema extractor to use MySQL-compatible information_schema queries for foreign keys, because `information_schema.constraint_column_usage` is a PostgreSQL-specific view and causes a fatal error when scanning MySQL databases.",
+      "id": "US-008",
+      "title": "Implement file-concept-map v2 with expanded format",
+      "description": "As a developer using incremental rebuild, I want the file-concept-map.json to use an expanded format with version, lastProcessed timestamp, and per-concept type information. This enables the incremental rebuild engine to know exactly which enrichment function to call for each affected concept.",
       "acceptanceCriteria": [
-        "MySQL FK query in schemaMysql.ts replaces `JOIN information_schema.constraint_column_usage` with MySQL's `key_column_usage` which has `referenced_table_name` and `referenced_column_name` columns",
-        "`domainlens discover --embeddings` against a MySQL database no longer throws 'Unknown table constraint_column_usage'",
-        "FK extraction produces correct foreign_table_name and foreign_column_name values",
-        "Existing PostgreSQL FK extraction in schemaPostgres.ts is unchanged",
-        "All existing tests still pass"
+        "File-concept-map uses v2 format: { version: 2, files: { [path]: { lastProcessed, concepts: [{ name, type }] } } }",
+        "Write and read utility functions for the map",
+        "Map is updated at end of each discover run",
+        "Old v1 format is not read (breaking change is acceptable for v2)",
+        "Listed in .gitignore generated by init",
+        "Typecheck passes"
       ],
-      "priority": 1,
-      "passes": true,
-      "notes": "The FK query at schemaMysql.ts:190 was copied from the PostgreSQL scanner but MySQL uses KEY_COLUMN_USAGE with REFERENCED_TABLE_NAME/REFERENCED_COLUMN_NAME instead."
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Implement incremental rebuild engine via git diff",
+      "description": "As a DomainLens user, I want the system to detect changes via git diff HEAD (staged + unstaged) and git ls-files --others (untracked), cross-reference with file-concept-map, and selectively re-enrich only affected concepts. Deleted files should log a warning and stamp the concept with 'source file deleted' without auto-removing it. Git-unavailable environments should log a clear fallback message.",
+      "acceptanceCriteria": [
+        "Detects modified files via git diff HEAD --name-only",
+        "Detects new untracked files via git ls-files --others --exclude-standard",
+        "Cross-references changed files with file-concept-map to identify affected concepts and their types",
+        "Selective re-enrichment calls correct function (enrichDomainConcept or enrichBusinessRule) per concept type",
+        "Deleted source files log warning and append 'source file deleted' to concept's Detected Changes",
+        "No git available: logs ⚠ message with manual fallback instruction",
+        "Re-generates relations.md if any concept is updated",
+        "Re-embeds only changed files on hash check",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Implement domainlens watch command",
+      "description": "As a DomainLens user, I want a watch command that runs the incremental rebuild in a loop with configurable polling interval (default 30s). It should support --no-enrich for cost-limited environments. If filesystem events are available via chokidar, use them instead of polling as a fallback.",
+      "acceptanceCriteria": [
+        "domainlens watch command exists and runs incremental rebuild in a polling loop",
+        "Polling interval configurable via watch_interval_seconds (default 30s)",
+        "--no-enrich flag suppresses LLM calls, only updates detected signals",
+        "Output shows: changed files, affected concepts, enrichment results, relations regeneration, re-embedding",
+        "Uses chokidar for filesystem events if available, falls back to polling",
+        "Graceful error handling: failed cycle logs error and continues",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Update embedding pipeline to include business rules and relations",
+      "description": "As a DomainLens user, I want business rules (one excerpt per file) and relations.md (split by section into 4 excerpts) to be vectorized in the embedding pipeline alongside existing content. Hash-based incremental updates should apply to the new content types.",
+      "acceptanceCriteria": [
+        "Each business rule file in skills/rules/business/*.md generates one embedding excerpt",
+        "relations.md generates 4 excerpts (one per section: Domain Map, Concept Relations, Cross-Concept Rules, Entry Points)",
+        "New content types use hash-based incremental update (existing behavior preserved)",
+        "Embeddings triggerable via --embeddings flag on discover",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Add --relations-only flag and update status command",
+      "description": "As a DomainLens user, I want a --relations-only flag on discover that regenerates relations.md from existing skills without re-running extraction. I also want the status command to show business_rules, technical_rules, domain_map, relations status, and watch status. --relations-only should error with a clear message if no domain skills exist yet.",
+      "acceptanceCriteria": [
+        "--relations-only flag on discover skips schema, code scan, enrichment, and embeddings",
+        "--relations-only errors with message if no domain skills exist",
+        "Status output shows: business_rules count, technical_rules count, domain_map status, relations.md checkmark/status, watch status",
+        "Status example matches PRD format",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

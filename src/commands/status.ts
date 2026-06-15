@@ -22,10 +22,14 @@ export function runStatus(options: StatusOptions = {}): void {
 
   // Skills
   const domainDir = path.join(projectPath, 'skills', 'domain');
-  const rulesDir = path.join(projectPath, 'skills', 'rules');
+  const technicalDir = path.join(projectPath, 'skills', 'rules', 'technical');
+  const businessDir = path.join(projectPath, 'skills', 'rules', 'business');
   const domainCount = countMdFiles(domainDir);
-  const rulesCount = countMdFiles(rulesDir);
-  console.log(`  Skills:     ${domainCount} domain, ${rulesCount} rules`);
+  const technicalCount = countMdFiles(technicalDir);
+  const businessCount = countMdFiles(businessDir);
+  const mapPath = path.join(projectPath, 'skills', 'domain', 'relations.md');
+  const relationsStatus = fs.existsSync(mapPath) ? '✓' : '—';
+  console.log(`  Skills:     ${domainCount} domain, ${businessCount} business_rules, ${technicalCount} technical_rules, ${relationsStatus} domain_map`);
 
   // Schema
   const schemaPath = path.join(projectPath, '.domainlens', 'schemas', 'latest.json');

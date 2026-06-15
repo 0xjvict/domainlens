@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { DomainLensConfig, SchemaCache } from '../types.js';
 import type { Signal } from '../inferrer/heuristics.js';
 import type { Constant } from '../extractors/codeScanner.js';
-import { enrichConcept } from '../llm/openrouter.js';
+import { enrichConcept, hasLlmKey } from '../llm/openrouter.js';
 import type { SkillGenOptions, SkillGenResult } from './domainSkills.js';
 
 interface RuleSpec {
@@ -20,7 +20,7 @@ export async function generateRulesSkills(
   projectPath: string = process.cwd(),
   options: SkillGenOptions = {}
 ): Promise<SkillGenResult> {
-  const skillsDir = path.join(projectPath, 'skills', 'rules');
+  const skillsDir = path.join(projectPath, 'skills', 'rules', 'technical');
 
   if (!options.dryRun) {
     fs.mkdirSync(skillsDir, { recursive: true });
@@ -31,6 +31,8 @@ export async function generateRulesSkills(
   let created = 0;
   let updated = 0;
   let enriched = 0;
+
+  const canEnrich = !options.noEnrich && hasLlmKey(config);
 
   for (const rule of rules) {
     const skillPath = path.join(skillsDir, `${rule.name}.md`);
@@ -51,7 +53,7 @@ export async function generateRulesSkills(
       let ruleDefinition = `<!-- TODO: fill in the rule definition for ${rule.name} -->`;
       let source = 'auto-generated';
 
-      if (!options.noEnrich && rule.signals.length > 0) {
+      if (canEnrich && rule.signals.length > 0) {
         const enrichedDef = await enrichConcept(rule.name, rule.signals, config);
         if (enrichedDef) {
           ruleDefinition = enrichedDef;
@@ -159,7 +161,7 @@ function buildRuleSkill(rule: RuleSpec, ruleDefinition: string, source: string):
   const lines: string[] = [
     '---',
     `name: ${rule.name}`,
-    `type: rules`,
+    `type: technical_rule`,
     `tags: [${rule.tags.join(', ')}]`,
     `source: ${source}`,
     `last_updated: ${today}`,

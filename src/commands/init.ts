@@ -11,10 +11,13 @@ const DEFAULT_CONFIG = {
   agent_max_context_tokens: 100000,
   code_paths: ['src/', 'app/'],
   docs_paths: ['docs/', 'README.md'],
+  rules_paths: ['src/services/', 'src/validators/', 'src/policies/'],
   ignore: ['node_modules', '.git', 'dist'],
+  rules_batch_size: 10,
+  watch_interval_seconds: 30,
 };
 
-const GITIGNORE_ENTRIES = ['.domainlens/schemas/', '.domainlens/embeddings.db'];
+const GITIGNORE_ENTRIES = ['.domainlens/schemas/', '.domainlens/embeddings.db', '.domainlens/file-concept-map.json'];
 
 export function runInit(projectPath: string = process.cwd()): void {
   const domainlensDir = path.join(projectPath, '.domainlens');

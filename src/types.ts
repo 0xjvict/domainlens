@@ -10,7 +10,10 @@ export interface DomainLensConfig {
   agent_max_context_tokens?: number;
   code_paths: string[];
   docs_paths: string[];
+  rules_paths?: string[];
   ignore: string[];
+  rules_batch_size?: number;
+  watch_interval_seconds?: number;
   orm?: string;
   laravel_model_paths?: string[];
   laravel_base_models?: string[];

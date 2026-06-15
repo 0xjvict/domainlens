@@ -1,86 +1,15 @@
-## Codebase Patterns
-- Schema scanners follow a dispatcher pattern: `schema.ts` routes to `schemaPostgres.ts` or `schemaMysql.ts` based on `db_type`
-- Database type is configured in `config.json` (`db_type`) or inferred from URL protocol via `new URL(dbUrl).protocol`
-- MySQL ENUM types are inline in `COLUMN_TYPE`, not separate system catalog entries — parse via regex
-- Tests use vitest with `describe.runIf(process.env.RUN_INTEGRATION_TESTS)` to skip integration tests by default
-- mysql2/promise uses `connection.query()` returning `[rows, fields]`, different from pg's `client.query()` returning `{ rows }`
-- MySQL `information_schema.KEY_COLUMN_USAGE` has `REFERENCED_TABLE_NAME`/`REFERENCED_COLUMN_NAME` columns directly; `CONSTRAINT_COLUMN_USAGE` does not exist in MySQL — use `referenced_table_name IS NOT NULL` instead of joining `table_constraints` with `constraint_type = 'FOREIGN KEY'`
+# DomainLens v2 — Implementation Progress
+# Started: 2026-06-15
+# Stories: 12
 
-# Ralph Progress Log
-Started: Fri Jun 12 17:57:28 -03 2026
----
-
-## 2026-06-12 18:30 BRT - US-104
-- Wired --agent flag into domainlens discover CLI
-- Added agent branch in discover.ts: skips steps 2 (code scanner), 3 (ORM scanner), 5 (heuristic inferrer); runs agent explorer instead
-- Added tool call streaming in runner.ts (each tool call logged to console)
-- Added `definition?` field to DomainConcept type to carry agent-provided definitions
-- Modified generateDomainSkills to use pre-provided definitions and skip enrichConcept()
-- Added convertAgentConcepts() helper to bridge AgentConcept[] → DomainConcept[]
-- Added getExistingSkillNames() to read existing skill names for agent context
-- Added --option to CLI with --agent flag
-- Files changed: src/cli.ts, src/commands/discover.ts, src/inferrer/heuristics.ts, src/skills/domainSkills.ts, src/agent/runner.ts
+## 2026-06-15 15:00 - US-001
+- Added rules_paths, rules_batch_size, watch_interval_seconds to DomainLensConfig type
+- Added new fields to init command defaults and gitignore
+- Moved technical rules output from skills/rules/ to skills/rules/technical/
+- Updated frontmatter type from 'rules' to 'technical_rule'
+- Updated status command to count domain, business_rules, technical_rules, domain_map separately
+- Files changed: src/types.ts, src/commands/init.ts, src/skills/rulesSkills.ts, src/commands/status.ts
 - **Learnings for future iterations:**
-  - Agent path uses 4 steps total (instead of 6), renumbering from 1/4 to 4/4
-  - Constants are silently extracted in agent mode because generateRulesSkills() still needs them
-  - Agent's Signal type (value + file) differs from DomainConcept's Signal type (detail + source) — bridge needed in convertAgentConcepts()
-  - The tool call streaming in runner.ts uses console.log with "  →" prefix for indentation under the step header
----
-
-## 2026-06-12 - US-105
-- Added `db_type?: 'postgres' | 'mysql'` field to DomainLensConfig in types.ts
-- Added db_type: 'postgres' to DEFAULT_CONFIG in init.ts
-- Added `inferDbType()` function in schema.ts — uses config.db_type if set, otherwise infers from DATABASE_URL protocol (postgresql:// → postgres, mysql:// → mysql), defaulting to postgres
-- Added stub `extractSchemaMysql()` in schema.ts for the MySQL path (real implementation in US-106)
-- Added `mysql2@^3.12` dependency to package.json
-- Files changed: src/types.ts, src/commands/init.ts, src/extractors/schema.ts, package.json, package-lock.json
-- **Learnings for future iterations:**
-  - Config must always maintain backward compatibility — new optional fields with sensible defaults
-  - TypeScript union types (`'postgres' | 'mysql'`) work well for database type discrimination
-  - The schema.ts dispatcher pattern keeps the entry point stable while allowing driver-specific implementations
-  - `new URL(dbUrl).protocol` is a reliable parser for connection URL protocol detection
----
-
-## 2026-06-12 - US-106
-- Created `src/extractors/schemaPostgres.ts` — extracted all PostgreSQL-specific extraction logic unchanged
-- Created `src/extractors/schemaMysql.ts` — MySQL schema scanner using mysql2/promise:
-  - Tables via `information_schema.tables WHERE table_schema = DATABASE()`
-  - Columns with comments via `information_schema.columns.COLUMN_COMMENT`
-  - PK/FK/CHECK/UNIQUE via `information_schema.table_constraints` + joins
-  - Indexes via `SHOW INDEX FROM`
-  - Enums parsed from `COLUMN_TYPE LIKE 'enum(%'` with regex value extraction
-  - Schema name via `SELECT DATABASE()`
-- Rewrote `src/extractors/schema.ts` as a pure dispatcher using `inferDbType()`
-- Files changed: src/extractors/schema.ts, src/extractors/schemaPostgres.ts (new), src/extractors/schemaMysql.ts (new)
-- **Learnings for future iterations:**
-  - The SHOW INDEX FROM statement cannot use parameterized table names — must use backtick interpolation
-  - MySQL ENUM types are inline in COLUMN_TYPE not separate system catalog entries
-  - mysql2/promise uses `connection.query()` returning `[rows, fields]` — different from pg's `client.query()` returning `{ rows }`
-  - `information_schema.COLUMNS.COLUMN_COMMENT` replaces `pg_catalog.col_description()` for MySQL
----
-
-## 2026-06-12 - US-107
-- Added vitest v4 as test runner and @testcontainers/mysql for integration tests
-- Created vitest.config.ts (node environment, globals enabled)
-- Added test scripts: `npm test` (unit) and `npm test:integration` (with RUN_INTEGRATION_TESTS env)
-- Created `src/extractors/__tests__/schemaMysql.test.ts` with:
-  - Unit tests (5): no DB URL → null, empty URL → null, unreachable host → null, URL inference → null, no config → null
-  - Integration tests (9, skipped by default): table list, columns (types/nullable/default), PK, FK, indexes, CHECK, UNIQUE, ENUM parsing, schema field
-- Updated tsconfig.json to exclude `src/**/__tests__` from the build
-- Files changed: package.json, package-lock.json, tsconfig.json, vitest.config.ts (new), src/extractors/__tests__/schemaMysql.test.ts (new)
-- **Learnings for future iterations:**
-  - vitest's `describe.runIf(condition)` cleanly skips integration tests without env var
-  - `@testcontainers/mysql` maps directly to testcontainers — `new MySqlContainer('mysql:8')` starts a container
-  - Unit tests for DB-dependent code work by simply not setting env vars (no mocking needed)
-   - tsconfig must exclude `__tests__` dirs to avoid compiling test files into dist
----
-
-## 2026-06-12 - US-108
-- Fixed MySQL FK query in schemaMysql.ts — replaced PostgreSQL-specific `information_schema.constraint_column_usage` with MySQL's `key_column_usage.referenced_table_name`/`referenced_column_name`
-- Old query joined `table_constraints` + `key_column_usage` + `constraint_column_usage`; new query uses `key_column_usage` directly with `referenced_table_name IS NOT NULL`
-- Files changed: src/extractors/schemaMysql.ts
-- **Learnings for future iterations:**
-  - MySQL `information_schema.KEY_COLUMN_USAGE` has `REFERENCED_TABLE_NAME` and `REFERENCED_COLUMN_NAME` columns directly — no need to join `CONSTRAINT_COLUMN_USAGE` (which doesn't exist in MySQL)
-  - `referenced_table_name IS NOT NULL` is equivalent to filtering by `constraint_type = 'FOREIGN KEY'` in MySQL's key_column_usage
-  - When porting PG queries to MySQL, always verify the information_schema views exist — they differ significantly between databases
+  - The skills directory structure must be kept in sync across types.ts (config shape), init.ts (defaults), rulesSkills.ts (output paths), and status.ts (counting)
+  - Type `technical_rule` in frontmatter replaces the old `rules` type — any MCP tooling that filters by type must be updated too
 ---
