@@ -313,3 +313,16 @@
   - Flat file detection: if the remainder after stripping code_path has no '/' separator, all such files collapse into the code_path group
   - The caller partitionIntoGroups now needs config.code_paths as a 4th parameter
 ---
+
+## 2026-06-15 17:15 - US-022
+- Changed toSkillFilename() to snake_case: lowercase, spaces/hyphens→underscores, strip special chars, collapse underscores, trim
+- domainSkills.ts uses toSkillFilename for both .md filename and frontmatter name: field
+- businessRulesSkills.ts uses toSkillFilename for both .md filename and frontmatter name: field
+- MCP get_rules_for_concept applies toSkillFilename to args.concept before matching against related_concepts
+- Supersedes US-020 sanitization approach (now generates stock_quantity.md instead of Stock - Quantity.md)
+- Files changed: src/utils/filename.ts, src/skills/domainSkills.ts, src/skills/businessRulesSkills.ts, src/mcp/server.ts
+- **Learnings for future iterations:**
+  - The parentheses () char also needed removal since it appears in concept names like 'Advertisement (Ad)'
+  - The transformation order matters: convert separators to _ first, then strip non-alphanumeric, then collapse — keeps intended underscores while removing garbage
+  - toSkillFilename now serves double duty: filename and frontmatter name: consistency
+---

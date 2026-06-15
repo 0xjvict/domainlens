@@ -362,7 +362,7 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -406,6 +406,20 @@
         "Typecheck passes"
       ],
       "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Improve database connection error message when PostgreSQL client connects to MySQL",
+      "description": "As a DomainLens user with a MySQL database, I want to see an actionable error message when the PostgreSQL client accidentally connects to MySQL (error: received invalid response: 4a), instead of a cryptic hex byte, so I know exactly how to fix the configuration.",
+      "acceptanceCriteria": [
+        "In extractSchemaPostgres catch block, detect when the error message includes 'invalid response' or '4a' and log an additional hint: 'Hint: this may be a MySQL server. Set db_type: \"mysql\" in .domainlens/config.json'",
+        "The original error is still logged for debugging",
+        "The hint does not appear for other connection errors (e.g. wrong password, host unreachable)",
+        "Typecheck passes"
+      ],
+      "priority": 26,
       "passes": false,
       "notes": ""
     }

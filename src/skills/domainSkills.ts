@@ -112,7 +112,7 @@ function buildDomainSkill(
 
   const lines: string[] = [
     '---',
-    `name: ${concept.concept}`,
+    `name: ${toSkillFilename(concept.concept)}`,
     `type: domain`,
     `tags: [${tags.join(', ')}]`,
     `source: ${source}`,

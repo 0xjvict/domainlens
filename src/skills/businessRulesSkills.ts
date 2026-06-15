@@ -79,7 +79,7 @@ function buildBusinessRuleSkill(rule: BusinessRule, enrichedContent: string | nu
 
   const lines: string[] = [
     '---',
-    `name: ${rule.name}`,
+    `name: ${toSkillFilename(rule.name)}`,
     `type: business_rule`,
     `tags: [${tags.join(', ')}]`,
     `source: ${source}`,

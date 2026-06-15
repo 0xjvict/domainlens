@@ -328,7 +328,7 @@ export function createServer(projectPath: string): McpServer {
     },
     async (args) => {
       const businessDir = path.join(projectPath, 'skills', 'rules', 'business');
-      const searchConcept = args.concept.toLowerCase();
+      const searchConcept = toSkillFilename(args.concept).toLowerCase();
 
       if (!fs.existsSync(businessDir)) {
         return {
