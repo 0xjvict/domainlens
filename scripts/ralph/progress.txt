@@ -326,3 +326,13 @@
   - The transformation order matters: convert separators to _ first, then strip non-alphanumeric, then collapse — keeps intended underscores while removing garbage
   - toSkillFilename now serves double duty: filename and frontmatter name: consistency
 ---
+
+## 2026-06-15 17:30 - US-023
+- MIN_FILE_READS in runSingleSession now adapts to file_filter: Math.min(5, file_filter.length) when filter is set
+- Sub-agents with small batches (<5 files) can finish without re-prompt
+- Single-session mode (no file_filter) keeps MIN_FILE_READS = 5 unchanged
+- Files changed: src/agent/runner.ts
+- **Learnings for future iterations:**
+  - MIN_FILE_READS only affects the re-prompt logic, not the forceSummarize threshold — small batches can still accumulate context and hit agentMaxContextTokens
+  - The file_filter.length check is O(1) and doesn't affect performance
+---

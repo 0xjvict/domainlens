@@ -376,7 +376,7 @@
         "Typecheck passes"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -420,6 +420,24 @@
         "Typecheck passes"
       ],
       "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Add interactive setup wizard to domainlens init",
+      "description": "As a new DomainLens user, I want the init command to ask me guided questions before writing config.json, so I don't accidentally leave wrong defaults (like db_type: postgres on a MySQL project) that cause cryptic errors later.",
+      "acceptanceCriteria": [
+        "When config.json does not exist, init enters wizard mode and prompts interactively via readline before writing anything",
+        "Wizard asks: (1) Database type — options: postgres / mysql / none, default detected from existing DATABASE_URL env var protocol if available; (2) Env var name for database URL — default: DATABASE_URL; (3) Env var name for LLM API key — default: OPENROUTER_API_KEY",
+        "Wizard auto-detects code_paths by checking which of src/, app/, lib/ exist in the project root and pre-selects them; user can confirm or type a custom comma-separated list",
+        "Generated config.json uses the answers from the wizard instead of hardcoded defaults",
+        "If config.json already exists, wizard is skipped and existing behavior ('already exists — skipping') is preserved",
+        "Non-interactive mode: if --yes flag is passed to init, skip wizard and write defaults as before (for CI/scripted use)",
+        "After writing config.json, wizard prints a summary of what was configured and next steps",
+        "Typecheck passes"
+      ],
+      "priority": 27,
       "passes": false,
       "notes": ""
     }

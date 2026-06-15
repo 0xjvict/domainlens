@@ -94,7 +94,7 @@ async function runSingleSession(
   const agentMaxContextTokens = config.agent_max_context_tokens ?? 100000;
   const fileFilter = _options.file_filter;
 
-  const MIN_FILE_READS = 5;
+  const MIN_FILE_READS = fileFilter ? Math.min(5, fileFilter.length) : 5;
 
   const client = new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
