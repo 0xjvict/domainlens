@@ -301,6 +301,15 @@ async function forceSummarize(
   const files = extractFileReadContents(messages);
   if (files.length === 0) return [];
 
+  const assistantTexts: string[] = [];
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue;
+    const m = msg as OpenAI.Chat.ChatCompletionAssistantMessageParam;
+    if (typeof m.content === 'string' && m.content && (!m.tool_calls || m.tool_calls.length === 0)) {
+      assistantTexts.push(m.content);
+    }
+  }
+
   const systemEntry: OpenAI.Chat.ChatCompletionMessageParam = { role: 'system', content: systemPrompt };
   const finishEntry: OpenAI.Chat.ChatCompletionMessageParam = {
     role: 'user',
@@ -312,11 +321,17 @@ async function forceSummarize(
     content: `File: ${f.path}\n${f.content}`,
   }));
 
-  let context: OpenAI.Chat.ChatCompletionMessageParam[] = [systemEntry, ...fileEntries, finishEntry];
+  const assistantEntries: OpenAI.Chat.ChatCompletionMessageParam[] = assistantTexts.map((content) => ({
+    role: 'assistant',
+    content,
+  }));
+
+  let context: OpenAI.Chat.ChatCompletionMessageParam[] = [systemEntry, ...fileEntries, ...assistantEntries, finishEntry];
 
   const estimatedTokens = Math.ceil(JSON.stringify(context).length / 4);
   if (estimatedTokens > agentMaxContextTokens * 0.7) {
-    const baseSize = Math.ceil(JSON.stringify([systemEntry, finishEntry]).length / 4);
+    const assistantTokenSize = Math.ceil(JSON.stringify(assistantEntries).length / 4);
+    const baseSize = Math.ceil(JSON.stringify([systemEntry, finishEntry]).length / 4) + assistantTokenSize;
     const budget = Math.floor(agentMaxContextTokens * 0.7 - baseSize);
 
     const trimmed: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -342,7 +357,7 @@ async function forceSummarize(
 
     console.log(`  ⚠ forceSummarize: context too large even after stripping navigation (${files.length} files, ~${Math.ceil(JSON.stringify(context).length / 4 / 1000)}k tokens). Including most recent ${trimmed.length} files within budget.`);
 
-    context = [systemEntry, ...trimmed, finishEntry];
+    context = [systemEntry, ...trimmed, ...assistantEntries, finishEntry];
   }
 
   try {

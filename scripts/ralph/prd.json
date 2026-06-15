@@ -675,6 +675,22 @@
       "priority": 42,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "Include assistant text responses in forceSummarize context to preserve discovered concepts",
+      "description": "As a DomainLens user running discover --agent, I want concepts the agent identified in text responses (not tool calls) to be preserved when forceSummarize is triggered, so that batches where the model responded with a rich markdown analysis before calling finish() do not lose all discovered concepts.",
+      "acceptanceCriteria": [
+        "In src/agent/runner.ts, after extractFileReadContents collects read_file results, also collect all assistant messages where content is non-null and tool_calls is absent or empty — these are text-only responses containing concept analysis",
+        "In the minimal messages array built by forceSummarize, append the collected assistant text messages as { role: 'assistant', content: message.content } entries after the file read user messages and before the final 'call finish()' user message",
+        "The token budget estimation in Stage 2 of forceSummarize includes the character length of assistant text messages in the total count",
+        "Assistant text messages are always included in full (not subject to the per-file drop-whole-or-keep-whole rule) since they are compact summaries",
+        "A batch where the model produced a markdown concept table in a text response followed by reading more files now returns those concepts via finish() instead of returning 0",
+        "Typecheck passes"
+      ],
+      "priority": 43,
+      "passes": true,
+      "notes": ""
     }
   ]
 }

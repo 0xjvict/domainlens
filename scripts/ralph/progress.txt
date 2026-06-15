@@ -565,3 +565,14 @@
   - The ternary `fileFilter ? null : buildSchemaSummary(schema)` short-circuits schema extraction entirely when not needed — no DB query cost for sub-agents
   - Omitted schema saves thousands of tokens per sub-agent prompt, reducing pre-flight check triggers and API costs
 ---
+
+## 2026-06-15 22:30 - US-043
+- Added assistant text message extraction in forceSummarize: collects assistant messages with string content and no tool_calls (concept analysis responses)
+- Assistant text entries appended after file entries and before finish prompt in the minimal context
+- Stage 2 token budget includes assistant entry sizes in the base overhead — assistant texts always kept in full, only files are dropped when over budget
+- Fixed TypeScript type narrowing (typeof check on assistant content field which can be string | array | null)
+- Files changed: src/agent/runner.ts, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - OpenAI SDK ChatCompletionAssistantMessageParam.content can be string | ChatCompletionContentPartText[] | ChatCompletionContentPartRefusal[] | null — always narrow with typeof before using as string
+  - Assistant text-only messages (content with no tool_calls) are rare but important: they contain the agent's concept analysis even when it never called finish()
+---
