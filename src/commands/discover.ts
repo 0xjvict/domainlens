@@ -255,13 +255,13 @@ async function runDiscoverAgent(
   const domainResult = await generateDomainSkills(concepts, config, projectPath, {
     dryRun: options.dryRun,
     force: options.force,
-    noEnrich: true,
+    noEnrich: options.noEnrich ?? false,
   });
 
   const rulesResult = await generateRulesSkills(schema, constants, config, projectPath, {
     dryRun: options.dryRun,
     force: options.force,
-    noEnrich: options.noEnrich,
+    noEnrich: options.noEnrich ?? false,
   });
 
   console.log('▶ Step 5/5: Extracting business rules...');

@@ -416,3 +416,15 @@
   - The cap is on results pushed to the array, not on walking — total count is still computed so the truncation notice shows accurate N
   - MAX_GLOB_RESULTS sits at the file level alongside MAX_READ_LINES and MAX_SEARCH_RESULTS
 ---
+
+## 2026-06-15 19:30 - US-031
+- Replaced hardcoded noEnrich: true with noEnrich: options.noEnrich ?? false in runDiscoverAgent's generateDomainSkills call
+- Also fixed rulesResult's noEnrich to pass options.noEnrich ?? false for consistency
+- Concepts returned by --agent without states/business_rules/related_concepts now get LLM enrichment (when --no-enrich is not passed)
+- Running --agent --no-enrich still skips all enrichment (preserved behavior)
+- Per-concept skipEnrich flag set by convertAgentConcepts continues to take precedence in generateDomainSkills
+- Files changed: src/commands/discover.ts
+- **Learnings for future iterations:**
+  - The skipEnrich per-concept flag and noEnrich global option are independent: skipEnrich is checked first (line 61), so it takes precedence even when noEnrich is false
+  - Both generateDomainSkills call sites (standard and agent paths) now pass options.noEnrich consistently
+---
