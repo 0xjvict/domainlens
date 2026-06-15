@@ -15,6 +15,7 @@ import { detectCandidates, extractBusinessRules } from '../extractors/businessRu
 import { generateBusinessRulesSkills } from '../skills/businessRulesSkills.js';
 import { generateRelationsMap } from '../skills/relationsSkills.js';
 import { updateFileConceptMap } from '../utils/fileConceptMap.js';
+import { parseFrontmatter } from '../utils/frontmatter.js';
 
 export interface DiscoverOptions {
   dryRun?: boolean;
@@ -339,13 +340,10 @@ function getExistingSkillNames(projectPath: string): string[] {
     for (const f of fs.readdirSync(dir)) {
       if (!f.endsWith('.md')) continue;
       const content = fs.readFileSync(path.join(dir, f), 'utf-8');
-      const fm = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fm) continue;
-      const typeLine = fm[1].split('\n').find((l) => l.startsWith('type:'));
-      if (!typeLine) continue;
-      const type = typeLine.slice(5).trim();
+      const fm = parseFrontmatter(content);
+      const type = fm['type'];
       if (type === 'domain' || type === 'business_rule') {
-        names.push(f.replace(/\.md$/, ''));
+        names.push(fm['name'] || f.replace(/\.md$/, ''));
       }
     }
   }
@@ -355,17 +353,18 @@ function getExistingSkillNames(projectPath: string): string[] {
 
 function getExistingDomainAndRuleNames(projectPath: string): string[] {
   const names: string[] = [];
-  const domainDir = path.join(projectPath, 'skills', 'domain');
-  const businessDir = path.join(projectPath, 'skills', 'rules', 'business');
+  const dirs = [
+    path.join(projectPath, 'skills', 'domain'),
+    path.join(projectPath, 'skills', 'rules', 'business'),
+  ];
 
-  if (fs.existsSync(domainDir)) {
-    for (const f of fs.readdirSync(domainDir)) {
-      if (f.endsWith('.md')) names.push(f.replace(/\.md$/, ''));
-    }
-  }
-  if (fs.existsSync(businessDir)) {
-    for (const f of fs.readdirSync(businessDir)) {
-      if (f.endsWith('.md')) names.push(f.replace(/\.md$/, ''));
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.md')) continue;
+      const content = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const fm = parseFrontmatter(content);
+      names.push(fm['name'] || f.replace(/\.md$/, ''));
     }
   }
 

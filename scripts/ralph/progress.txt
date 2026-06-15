@@ -428,3 +428,15 @@
   - The skipEnrich per-concept flag and noEnrich global option are independent: skipEnrich is checked first (line 61), so it takes precedence even when noEnrich is false
   - Both generateDomainSkills call sites (standard and agent paths) now pass options.noEnrich consistently
 ---
+
+## 2026-06-15 19:45 - US-032
+- Fixed getExistingSkillNames to read frontmatter name: field as source of truth, falling back to filename-without-extension if absent
+- Fixed getExistingDomainAndRuleNames with same frontmatter-first logic (now reads file content instead of just listing filenames)
+- Both functions reuse parseFrontmatter from src/utils/frontmatter.ts (no extra fs.readFileSync per file)
+- After US-022 snake_case standardization, this ensures the agent recognizes already-documented concepts by their original name: value
+- Files changed: src/commands/discover.ts
+- **Learnings for future iterations:**
+  - parseFrontmatter from src/utils/frontmatter.ts is the canonical way to extract frontmatter fields — prefer it over inline regex
+  - When both getExistingSkillNames and getExistingDomainAndRuleNames exist with similar logic, consider consolidating them to avoid drift
+  - getExistingDomainAndRuleNames is used by pre-scan (preScan.ts) to skip already-documented concepts — frontmatter name: must be the canonical identifier everywhere
+---
