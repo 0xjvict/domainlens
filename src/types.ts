@@ -8,6 +8,8 @@ export interface DomainLensConfig {
   explorer_model?: string;
   agent_max_files?: number;
   agent_max_context_tokens?: number;
+  agent_batch_size?: number;
+  agent_strategy?: 'single' | 'multi';
   code_paths: string[];
   docs_paths: string[];
   rules_paths?: string[];

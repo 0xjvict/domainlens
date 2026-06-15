@@ -1,6 +1,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Config field reference:
+//   db_url_env              — env var name holding the database URL
+//   db_type                 — 'postgres' | 'mysql' (auto-detected if unset)
+//   llm_key_env             — env var name for the LLM API key
+//   llm_model               — model for enrichment and extraction
+//   explorer_model          — model for agent exploration (defaults to llm_model)
+//   agent_max_files         — max files for agent to explore per batch
+//   agent_max_context_tokens — max tokens per agent session
+//   agent_batch_size        — files per sub-agent in multi-session mode (default: 40)
+//   agent_strategy          — 'single' | 'multi' exploration strategy (default: 'multi')
+//   code_paths              — directories to scan for code signals
+//   docs_paths              — paths to scan for documentation
+//   rules_paths             — paths to scan for business rule candidates
+//   ignore                  — globs to exclude from scanning
+//   rules_batch_size        — files per batch for LLM rule extraction
+//   watch_interval_seconds  — polling interval for domainlens watch
+//   orm                     — override ORM auto-detection
+//   laravel_model_paths     — paths to scan for Laravel models
+//   laravel_base_models     — Laravel base model classes
 const DEFAULT_CONFIG = {
   db_url_env: 'DATABASE_URL',
   db_type: 'postgres',
@@ -9,6 +28,8 @@ const DEFAULT_CONFIG = {
   explorer_model: 'anthropic/claude-sonnet-4-6',
   agent_max_files: 150,
   agent_max_context_tokens: 100000,
+  agent_batch_size: 40,
+  agent_strategy: 'multi',
   code_paths: ['src/', 'app/'],
   docs_paths: ['docs/', 'README.md'],
   rules_paths: ['src/services/', 'src/validators/', 'src/policies/'],

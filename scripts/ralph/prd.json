@@ -202,6 +202,86 @@
       "priority": 12,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Add agent_batch_size and agent_strategy config fields",
+      "description": "As a developer configuring DomainLens, I want two new config fields — agent_batch_size (files per sub-agent, default 40) and agent_strategy ('single' | 'multi', default 'multi') — so that I can control whether the agent uses a single session or the multi-session exploration strategy.",
+      "acceptanceCriteria": [
+        "DomainLensConfig type in src/types.ts includes agent_batch_size?: number and agent_strategy?: 'single' | 'multi'",
+        "init command generates config.json with agent_batch_size: 40 and agent_strategy: 'multi'",
+        "Both fields are documented in the config table comment block",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Implement mapping phase (Phase 1 of multi-session exploration)",
+      "description": "As a developer implementing multi-session exploration, I want a lightweight mapping function that runs a short LLM session to list directories and glob files, producing file groups partitioned by module/directory — without reading any file content — so the total cost is ~1-2k tokens.",
+      "acceptanceCriteria": [
+        "New function buildFileGroups(config, projectPath) exists in src/agent/",
+        "Uses a short LLM call that only calls list_directory and glob_files (no read_file)",
+        "Agent session terminates early once it has enough file paths (no finish() needed — just returns file paths from tool call history)",
+        "Falls back to a simple walkdir grouping (by top-level code_path subdirectory) if the LLM call fails",
+        "Returns string[][] where each inner array is a batch of file paths up to agent_batch_size",
+        "Respects ignore list from config",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add file_filter support to agent runner for sub-agent sessions",
+      "description": "As a developer implementing multi-session exploration, I want the agent runner to accept an optional file_filter (string[]) parameter that restricts read_file calls to only the specified paths, so each sub-agent only explores its assigned batch and cannot drift into other modules.",
+      "acceptanceCriteria": [
+        "runAgent() accepts an optional file_filter?: string[] in RunAgentOptions",
+        "When file_filter is set, read_file calls for paths not in the filter return an error string: 'Error: file not in assigned batch'",
+        "list_directory and glob_files are not restricted (the agent can still navigate to find its files)",
+        "System prompt includes the assigned file list when file_filter is set: 'You are assigned to explore these files: ...'",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Implement consolidation of multi-agent concept results",
+      "description": "As a developer implementing multi-session exploration, I want a consolidation function that merges AgentConcept[] arrays from multiple sub-agent sessions — deduplicating by normalized name, merging signals and related_concepts, and resolving cross-module relations — so the pipeline receives a single unified list.",
+      "acceptanceCriteria": [
+        "New function consolidateConcepts(batches: AgentConcept[][]): AgentConcept[] exists in src/agent/",
+        "Deduplication: concepts with the same name (case-insensitive) are merged into one",
+        "Merged concept: signals arrays are concatenated and deduplicated by value",
+        "Merged concept: related_concepts arrays are unioned",
+        "Merged concept: definition from the batch with more signals wins; other definition appended as alternate if substantially different",
+        "Merged concept: states and business_rules arrays are unioned",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Wire multi-session strategy into agent runner dispatch",
+      "description": "As a DomainLens user running discover --agent on a large codebase, I want the agent runner to automatically use the multi-session strategy (Phase 1 mapping → Phase 2 sub-agents → Phase 3 consolidation) when agent_strategy is 'multi', and fall back to the existing single-session flow when it is 'single'.",
+      "acceptanceCriteria": [
+        "runAgent() checks config.agent_strategy; routes to multi-session flow when 'multi' (default), single-session flow when 'single'",
+        "Multi-session flow: calls buildFileGroups(), then runAgent() with file_filter per group, then consolidateConcepts()",
+        "Progress output shows phase headers: '▶ Phase 1: Mapping files...', '▶ Phase 2: Exploring batch N/M...', '▶ Phase 3: Consolidating results...'",
+        "If buildFileGroups() fails or returns a single group, falls back to single-session silently",
+        "agent_max_context_tokens still applies per sub-session (not globally)",
+        "forceSummarize() is still invoked per sub-session when its context limit is hit",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

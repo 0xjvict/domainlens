@@ -189,3 +189,14 @@
   - Watch status reuses the same git check pattern (git --version + git rev-parse --git-dir) as incremental.ts
   - The status command now uses execSync for git check — keep the import in sync
 ---
+
+## 2026-06-15 12:30 - US-013
+- Added agent_batch_size and agent_strategy fields to DomainLensConfig type in src/types.ts
+- Added agent_batch_size: 40 and agent_strategy: 'multi' defaults to init.ts DEFAULT_CONFIG
+- Added config field reference comment block above DEFAULT_CONFIG documenting all fields
+- Files changed: src/types.ts, src/commands/init.ts
+- **Learnings for future iterations:**
+  - The config comment block in init.ts is the single source of truth for field documentation — keep it in sync when adding new config fields
+  - agent_strategy uses a union type 'single' | 'multi' — TypeScript enforces valid values at compile time
+  - agent_batch_size defaults to 40 (not 150 like agent_max_files) — intentionally smaller for focused sub-agent batches
+---
