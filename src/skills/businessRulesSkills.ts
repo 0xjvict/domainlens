@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { DomainLensConfig, BusinessRule } from '../types.js';
 import { enrichBusinessRule, hasLlmKey } from '../llm/openrouter.js';
 import type { SkillGenOptions, SkillGenResult } from './domainSkills.js';
+import { toSkillFilename } from '../utils/filename.js';
 
 export async function generateBusinessRulesSkills(
   rules: BusinessRule[],
@@ -27,7 +28,7 @@ export async function generateBusinessRulesSkills(
   const canEnrich = !options.noEnrich && hasLlmKey(config);
 
   for (const rule of rules) {
-    const skillPath = path.join(skillsDir, `${rule.name}.md`);
+    const skillPath = path.join(skillsDir, `${toSkillFilename(rule.name)}.md`);
     const exists = fs.existsSync(skillPath);
 
     if (exists && !options.force) {

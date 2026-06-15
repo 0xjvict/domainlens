@@ -286,3 +286,15 @@
   - The concurrency pool size is `Math.min(concurrency, totalBatches)` to avoid starting more workers than needed
   - Each worker runs independently, so per-session 429 retries via callWithRetry are naturally preserved
 ---
+
+## 2026-06-15 16:45 - US-020
+- Created src/utils/filename.ts with toSkillFilename() — replaces / and \ with -, removes special chars (↔→:*?"<>|), normalizes spaces, trims
+- domainSkills.ts uses toSkillFilename(concept.concept) for .md file path, keeping original concept.concept in frontmatter name:
+- businessRulesSkills.ts uses toSkillFilename(rule.name) for .md file path, keeping original rule.name in frontmatter name:
+- MCP server get_skill and get_concept: first try sanitized filename match, then fallback to scanning frontmatter name: field
+- Files changed: src/utils/filename.ts (new), src/skills/domainSkills.ts, src/skills/businessRulesSkills.ts, src/mcp/server.ts
+- **Learnings for future iterations:**
+  - The filename utility is separate from frontmatter parsing — keeps concerns clean
+  - MCP tools need a two-phase lookup: filename match first, frontmatter scan as fallback for backward compat
+  - parseConceptFile helper extraction avoided code duplication in get_concept's filename + frontmatter phases
+---

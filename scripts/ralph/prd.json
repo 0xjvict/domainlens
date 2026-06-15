@@ -312,6 +312,72 @@
       "priority": 19,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Sanitize concept names before using as skill filenames",
+      "description": "As a DomainLens user, I want concept names with special characters (/, \\, ↔, →, parentheses) to be safely converted to valid filenames, so that skills are created without ENOENT errors and MCP lookups work correctly regardless of concept name content.",
+      "acceptanceCriteria": [
+        "New utility function toSkillFilename(name: string): string added in src/utils/ that replaces '/' and '\\' with '-', removes non-filesystem-safe special characters (↔, →, :, *, ?, \", <, >, |), normalizes multiple spaces to one, and trims",
+        "domainSkills.ts uses toSkillFilename(concept.concept) for the .md file path, while keeping the original concept.concept in the frontmatter name: field",
+        "businessRulesSkills.ts uses toSkillFilename(rule.name) for the .md file path, while keeping the original rule.name in the frontmatter name: field",
+        "MCP server get_skill, get_concept lookup sanitizes args.name with toSkillFilename before comparing against filenames",
+        "MCP server also falls back to scanning frontmatter name: field if filename match fails, so existing unsanitized files still resolve",
+        "Concept 'Stock / Quantity' creates file 'Stock - Quantity.md' without error",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Fix file group key calculation to be relative to code_path, not projectPath",
+      "description": "As a DomainLens user with a deep code_paths config (e.g. 'src/domain/'), I want file batches to be grouped by the first subdirectory inside each code_path (e.g. 'Order', 'Customer'), not by the first two segments from the project root, so that multi-session exploration actually distributes work across modules instead of collapsing everything into one group or exploding into one group per file.",
+      "acceptanceCriteria": [
+        "partitionIntoGroups in src/agent/mapper.ts computes the group key as: find which code_path the file belongs to, strip that prefix, then use the first path segment of the remainder as the key",
+        "buildFallbackGroups applies the same key logic",
+        "For code_paths: ['src/domain/'] and file 'src/domain/Order/Entities/Order.php', key is 'src/domain/Order'",
+        "For code_paths: ['src/'] and file 'src/Order.ts' (flat), key is 'src/' (all flat files grouped together, not one group per file)",
+        "For a file that matches no code_path prefix, falls back to the original first-two-segments logic",
+        "Oversized groups (> agent_batch_size) still get split into chunks",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Standardize skill filenames and frontmatter name to snake_case",
+      "description": "As a DomainLens user, I want all skill filenames and their frontmatter name: field to use snake_case (e.g. stock_quantity.md, name: stock_quantity), so filenames are consistent, shell-safe without quoting, and match the MCP lookup convention already shown in the PRD examples. Supersedes the filename sanitization approach described in US-020.",
+      "acceptanceCriteria": [
+        "toSkillFilename(name: string): string in src/utils/ converts to snake_case: lowercase, spaces and hyphens to underscores, removes all non-alphanumeric chars except underscores, collapses multiple underscores to one, trims leading/trailing underscores",
+        "Examples: 'Stock / Quantity' → 'stock_quantity', 'Advertisement (Ad)' → 'advertisement_ad', 'Integration (Marketplace ↔ ERP)' → 'integration_marketplace_erp', 'SKU (Seller SKU)' → 'sku_seller_sku'",
+        "domainSkills.ts uses toSkillFilename(concept.concept) for both the .md filename and the frontmatter name: field",
+        "businessRulesSkills.ts uses toSkillFilename(rule.name) for both the .md filename and the frontmatter name: field",
+        "MCP server get_skill, get_concept, get_rules_for_concept lookups apply toSkillFilename to args.name before comparing against filenames",
+        "MCP server falls back to scanning frontmatter name: field if filename match fails (backward compat with old Title Case files)",
+        "Concept 'Stock / Quantity' creates file 'stock_quantity.md' with frontmatter 'name: stock_quantity' without error",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Fix MIN_FILE_READS to respect file_filter size in sub-agent sessions",
+      "description": "As a DomainLens user running multi-session exploration, I want sub-agents with small batches (fewer than 5 files) to be allowed to call finish() after reading all their assigned files, instead of being re-prompted to read more files that don't exist in their filter and entering an error loop.",
+      "acceptanceCriteria": [
+        "In runSingleSession, when file_filter is defined, effective MIN_FILE_READS = Math.min(5, file_filter.length)",
+        "Sub-agent assigned 3 files reads all 3 and calls finish() without receiving the re-prompt",
+        "Single-session mode (no file_filter) keeps MIN_FILE_READS = 5 unchanged",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

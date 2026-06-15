@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { load as loadVec } from 'sqlite-vec';
 import type { SchemaCache } from '../types.js';
 import { parseFrontmatter, parseTags } from '../utils/frontmatter.js';
+import { toSkillFilename } from '../utils/filename.js';
 
 function extractSection(body: string, sectionName: string): string {
   const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -205,7 +206,8 @@ export function createServer(projectPath: string): McpServer {
       name: z.string(),
     },
     async (args) => {
-      const searchName = args.name.toLowerCase();
+      const sanitizedName = toSkillFilename(args.name);
+      const searchName = sanitizedName.toLowerCase();
       const skillsDir = path.join(projectPath, 'skills');
 
       for (const subdir of ['domain', 'rules']) {
@@ -216,6 +218,21 @@ export function createServer(projectPath: string): McpServer {
           const nameWithoutExt = file.replace(/\.md$/, '');
           if (nameWithoutExt.toLowerCase() === searchName) {
             const content = fs.readFileSync(path.join(dir, file), 'utf-8');
+            return {
+              content: [{ type: 'text' as const, text: content }],
+            };
+          }
+        }
+      }
+
+      for (const subdir of ['domain', 'rules']) {
+        const dir = path.join(skillsDir, subdir);
+        if (!fs.existsSync(dir)) continue;
+        for (const file of fs.readdirSync(dir)) {
+          if (!file.endsWith('.md')) continue;
+          const content = fs.readFileSync(path.join(dir, file), 'utf-8');
+          const fm = parseFrontmatter(content);
+          if (fm.name && fm.name.toLowerCase() === searchName) {
             return {
               content: [{ type: 'text' as const, text: content }],
             };
@@ -243,7 +260,8 @@ export function createServer(projectPath: string): McpServer {
       name: z.string(),
     },
     async (args) => {
-      const searchName = args.name.toLowerCase();
+      const sanitizedName = toSkillFilename(args.name);
+      const searchName = sanitizedName.toLowerCase();
       const domainDir = path.join(projectPath, 'skills', 'domain');
 
       if (!fs.existsSync(domainDir)) {
@@ -252,11 +270,7 @@ export function createServer(projectPath: string): McpServer {
         };
       }
 
-      for (const file of fs.readdirSync(domainDir)) {
-        if (!file.endsWith('.md') || file === 'relations.md') continue;
-        const nameWithoutExt = file.replace(/\.md$/, '');
-        if (nameWithoutExt.toLowerCase() !== searchName) continue;
-
+      const parseConceptFile = (file: string) => {
         const content = fs.readFileSync(path.join(domainDir, file), 'utf-8');
         const fm = parseFrontmatter(content);
         const body = content.replace(/^---[\s\S]*?---\n?/, '');
@@ -270,17 +284,33 @@ export function createServer(projectPath: string): McpServer {
         }
 
         return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              name: fm.name || nameWithoutExt,
-              type: fm.type || 'domain',
-              source: fm.source || 'unknown',
-              tags: parseTags(fm.tags),
-              sections,
-            }, null, 2),
-          }],
+          name: fm.name || file.replace('.md', ''),
+          type: fm.type || 'domain',
+          source: fm.source || 'unknown',
+          tags: parseTags(fm.tags),
+          sections,
         };
+      };
+
+      for (const file of fs.readdirSync(domainDir)) {
+        if (!file.endsWith('.md') || file === 'relations.md') continue;
+        const nameWithoutExt = file.replace(/\.md$/, '');
+        if (nameWithoutExt.toLowerCase() === searchName) {
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify(parseConceptFile(file), null, 2) }],
+          };
+        }
+      }
+
+      for (const file of fs.readdirSync(domainDir)) {
+        if (!file.endsWith('.md') || file === 'relations.md') continue;
+        const content = fs.readFileSync(path.join(domainDir, file), 'utf-8');
+        const fm = parseFrontmatter(content);
+        if (fm.name && fm.name.toLowerCase() === searchName) {
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify(parseConceptFile(file), null, 2) }],
+          };
+        }
       }
 
       return {
