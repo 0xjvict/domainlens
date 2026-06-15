@@ -13,6 +13,7 @@ import { runAgent } from '../agent/runner.js';
 import { preScanConcepts, mergeConcepts } from '../llm/preScan.js';
 import { detectCandidates, extractBusinessRules } from '../extractors/businessRules.js';
 import { generateBusinessRulesSkills } from '../skills/businessRulesSkills.js';
+import { generateRelationsMap } from '../skills/relationsSkills.js';
 
 export interface DiscoverOptions {
   dryRun?: boolean;
@@ -155,6 +156,15 @@ async function runDiscoverStandard(
     }
   } else {
     console.log('  No candidate files found in rules_paths');
+  }
+
+  console.log('▶ Synthesizing relations map...');
+  const relationsGenerated = await generateRelationsMap(projectPath, {
+    dryRun: options.dryRun,
+    force: options.force,
+  });
+  if (relationsGenerated) {
+    console.log('  ✓ relations.md updated');
   }
 
   const totalCreated = domainResult.created + rulesResult.created;
