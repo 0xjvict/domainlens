@@ -4,6 +4,8 @@ import * as readline from 'node:readline';
 import OpenAI from 'openai';
 import type { DomainLensConfig, AgentConcept, Signal } from '../types.js';
 import { getToolDefinitions, createToolHandlers } from './tools.js';
+import { buildFileGroups } from './mapper.js';
+import { consolidateConcepts } from './consolidator.js';
 
 export interface RunAgentOptions {
   file_filter?: string[];
@@ -20,6 +22,62 @@ export async function runAgent(
     throw new Error(`LLM key not found in environment variable "${config.llm_key_env}"`);
   }
 
+  const agentStrategy = config.agent_strategy ?? 'multi';
+
+  if (agentStrategy === 'multi') {
+    return runMultiSession(config, projectPath, existingSkills, _options);
+  }
+
+  return runSingleSession(config, projectPath, existingSkills, _options);
+}
+
+async function runMultiSession(
+  config: DomainLensConfig,
+  projectPath: string,
+  existingSkills: string[],
+  options: RunAgentOptions
+): Promise<AgentConcept[]> {
+  console.log('▶ Phase 1: Mapping files...');
+  let fileGroups: string[][];
+  try {
+    fileGroups = await buildFileGroups(config, projectPath);
+  } catch {
+    console.log('  Mapping failed — falling back to single-session exploration');
+    return runSingleSession(config, projectPath, existingSkills, options);
+  }
+
+  if (fileGroups.length <= 1) {
+    return runSingleSession(config, projectPath, existingSkills, options);
+  }
+
+  const totalBatches = fileGroups.length;
+  const batchResults: AgentConcept[][] = [];
+
+  for (let i = 0; i < totalBatches; i++) {
+    const batch = fileGroups[i];
+    console.log(`▶ Phase 2: Exploring batch ${i + 1}/${totalBatches} (${batch.length} files)...`);
+    const batchConcepts = await runSingleSession(
+      config,
+      projectPath,
+      existingSkills,
+      { ...options, file_filter: batch }
+    );
+    batchResults.push(batchConcepts);
+  }
+
+  console.log('▶ Phase 3: Consolidating results...');
+  const consolidated = consolidateConcepts(batchResults);
+  console.log(`  ✓ ${consolidated.length} unique concepts after consolidation`);
+  return consolidated;
+}
+
+async function runSingleSession(
+  config: DomainLensConfig,
+  projectPath: string,
+  existingSkills: string[],
+  _options: RunAgentOptions = {}
+): Promise<AgentConcept[]> {
+  const apiKey = process.env[config.llm_key_env];
   const model = config.explorer_model ?? config.llm_model;
   const agentMaxFiles = config.agent_max_files ?? 150;
   const agentMaxContextTokens = config.agent_max_context_tokens ?? 100000;

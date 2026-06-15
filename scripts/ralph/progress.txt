@@ -244,3 +244,19 @@
   - Definition comparison uses a simple normalization heuristic — no semantic similarity check
   - consolidateConcepts preserves the original casing of the concept name (uses first encountered variant)
 ---
+
+## 2026-06-15 13:30 - US-017
+- Refactored runAgent() into a dispatcher that checks config.agent_strategy ('multi' | 'single')
+- Extracted single-session logic into runSingleSession() (preserves original behavior exactly)
+- Added runMultiSession() orchestrating Phase 1 (buildFileGroups), Phase 2 (sub-agent sessions with file_filter per batch), Phase 3 (consolidateConcepts)
+- Progress output shows phase headers: '▶ Phase 1: Mapping files...', '▶ Phase 2: Exploring batch N/M...', '▶ Phase 3: Consolidating results...'
+- Falls back to single-session silently when buildFileGroups fails or returns ≤1 group
+- agent_max_context_tokens and forceSummarize apply per sub-session (natural, since each runs as its own runSingleSession call)
+- Added imports for buildFileGroups and consolidateConcepts
+- Files changed: src/agent/runner.ts
+- **Learnings for future iterations:**
+  - The refactored runAgent now handles the apiKey check once, then dispatches — both paths share the same credential validation
+  - runMultiSession passes file_filter via { ...options, file_filter: batch } — this overrides any existing file_filter in options, which is correct since each batch owns its filter
+  - The multi-session fallback is silent: if mapping returns ≤1 group, we just call runSingleSession without logging a phase message
+  - All sub-sessions run sequentially (not in parallel) to avoid rate limits and context contention
+---
