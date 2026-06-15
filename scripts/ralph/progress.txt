@@ -200,3 +200,19 @@
   - agent_strategy uses a union type 'single' | 'multi' — TypeScript enforces valid values at compile time
   - agent_batch_size defaults to 40 (not 150 like agent_max_files) — intentionally smaller for focused sub-agent batches
 ---
+
+## 2026-06-15 12:45 - US-014
+- Created src/agent/mapper.ts with buildFileGroups() implementing mapping phase for multi-session exploration
+  - attemptLlmMapping() — short LLM session with only list_directory and glob_files tools (no read_file), limited to 5 iterations and 2000 max_tokens
+  - Early stop when all code_paths have been explored
+  - partitionIntoGroups() — groups collected file paths by top-level subdirectory, splits oversized groups by agent_batch_size
+  - buildFallbackGroups() — deterministic walkdir fallback when LLM call fails, collects all files respecting ignore list, groups by subdirectory
+  - collectAllFiles() + walkCollectFiles() — recursive file collection respecting config.ignore
+- Files changed: src/agent/mapper.ts (new)
+- **Learnings for future iterations:**
+  - The mapping phase reuses createToolHandlers from tools.ts for list_directory and glob_files — keeps parsing consistent with the main agent
+  - Other tools (read_file, search_text, read_schema, finish) are explicitly blocked with an error message in mapping mode
+  - The LLM session is intentionally kept cheap: max 5 iterations, 2000 max_tokens, no read_file allowed
+  - Fallback walkdir grouping uses the same partition logic as the LLM path, ensuring consistent output format
+  - File paths are collected from glob_files tool results (not list_directory) to get concrete file paths, not just directory names
+---
