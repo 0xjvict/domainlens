@@ -553,3 +553,15 @@
   - extractFileReadContents pairs tool_call_id from assistant messages with tool result messages — relies on the messages array having both halves of the conversation
   - The pre-flight check prevents 400 errors from context overflow before they happen, complementing the post-hoc accumulatedInputTokens check
 ---
+
+## 2026-06-15 22:15 - US-042
+- When fileFilter is defined (multi-session sub-agent), schemaSummary passed as null to buildSystemPrompt instead of the full schema
+- Updated buildSystemPrompt signature: schemaJson parameter is now string | null
+- When schemaJson is null, the ## Database Schema section shows: '(schema omitted — read source files directly for field definitions and relationships)'
+- Single-session mode (no fileFilter) continues to send the full schema summary unchanged
+- existingSkills list is always passed regardless of fileFilter
+- Files changed: src/agent/runner.ts, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - The ternary `fileFilter ? null : buildSchemaSummary(schema)` short-circuits schema extraction entirely when not needed — no DB query cost for sub-agents
+  - Omitted schema saves thousands of tokens per sub-agent prompt, reducing pre-flight check triggers and API costs
+---

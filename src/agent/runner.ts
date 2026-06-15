@@ -103,7 +103,7 @@ async function runSingleSession(
   });
 
   const schema = loadSchemaCache(projectPath);
-  const schemaSummary = buildSchemaSummary(schema);
+  const schemaSummary = fileFilter ? null : buildSchemaSummary(schema);
   const systemPrompt = buildSystemPrompt(config, existingSkills, schemaSummary, MIN_FILE_READS, fileFilter);
   const tools = buildAllTools();
   const toolHandlers = createToolHandlers(config, projectPath, fileFilter);
@@ -450,7 +450,7 @@ function loadSchemaCache(projectPath: string): SchemaCache | null {
 function buildSystemPrompt(
   config: DomainLensConfig,
   existingSkills: string[],
-  schemaJson: string,
+  schemaJson: string | null,
   minFileReads: number,
   fileFilter?: string[]
 ): string {
@@ -462,10 +462,12 @@ function buildSystemPrompt(
   const codePathsList = config.code_paths.map((p) => `  - ${p}`).join('\n');
   const ignoreList = config.ignore.map((p) => `  - ${p}`).join('\n');
 
+  const schemaSection = schemaJson ?? '(schema omitted — read source files directly for field definitions and relationships)';
+
   return `You are a domain concept discovery agent. Your task is to explore this codebase and identify domain concepts — the core business entities, processes, and terminology used in the system.
 
 ## Database Schema
-${schemaJson}
+${schemaSection}
 
 ## Existing Skills (already documented — focus on new or missing concepts)
 ${skillsList}

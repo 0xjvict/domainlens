@@ -660,6 +660,21 @@
       "priority": 41,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "Omit schema from agent system prompt in multi-session sub-agent batches",
+      "description": "As a DomainLens user running discover --agent on a large database, I want sub-agent sessions with an assigned file batch to skip the schema in their system prompt, so that the system prompt fits within the model's context limit and the agent can actually start reading files instead of hitting the pre-flight check immediately.",
+      "acceptanceCriteria": [
+        "In runSingleSession in src/agent/runner.ts, when fileFilter is defined, pass null or empty string as the schema argument to buildSystemPrompt instead of the full schemaSummary",
+        "In buildSystemPrompt, add a schema parameter (string | null); when null or empty, replace the '## Database Schema' section content with '(schema omitted — read source files directly for field definitions and relationships)'",
+        "When fileFilter is NOT defined (single-session mode), pass the full schemaSummary to buildSystemPrompt as before",
+        "The existingSkills list is always passed regardless of fileFilter — never omitted",
+        "Typecheck passes"
+      ],
+      "priority": 42,
+      "passes": true,
+      "notes": ""
     }
   ]
 }
