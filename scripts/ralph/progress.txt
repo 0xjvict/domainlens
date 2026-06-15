@@ -539,3 +539,17 @@
   - computeGroupKey, partitionIntoGroups, collectAllFiles, walkCollectFiles all stay as private helpers
   - No CLAUDE.md files exist in this project (confirmed via glob)
 ---
+
+## 2026-06-15 22:00 - US-041
+- Added extractFileReadContents helper that pairs read_file tool calls with their tool result content from message history
+- Rewrote forceSummarize: builds minimal context [system, file entries as user messages, finish prompt] instead of passing the full raw message history
+- Added Stage 2 token budget: when estimated tokens exceed 70% of agentMaxContextTokens, drops oldest files from most-recent-to-oldest until within budget — never truncates individual file contents
+- Added pre-flight check before each API call: estimates token count via JSON.stringify length / 4; if it exceeds 85% of agentMaxContextTokens, calls forceSummarize proactively instead of sending the oversized request
+- forceSummarize returns [] immediately when no read_file contents are extracted (avoids pointless API calls)
+- Updated all 5 call sites of forceSummarize to pass systemPrompt and agentMaxContextTokens
+- Files changed: src/agent/runner.ts, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - JSON.stringify(messages).length / 4 is a rough token estimate but good enough for pre-flight checks — matches AC spec
+  - extractFileReadContents pairs tool_call_id from assistant messages with tool result messages — relies on the messages array having both halves of the conversation
+  - The pre-flight check prevents 400 errors from context overflow before they happen, complementing the post-hoc accumulatedInputTokens check
+---

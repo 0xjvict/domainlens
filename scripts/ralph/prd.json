@@ -643,6 +643,23 @@
       "priority": 40,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "Fix forceSummarize to build minimal context instead of passing full message history",
+      "description": "As a DomainLens user running discover --agent on large codebases, I want the agent to recover gracefully when context overflows instead of crashing with a 400 error, so that partial exploration results are always captured even when the model's context limit is hit.",
+      "acceptanceCriteria": [
+        "Add helper function extractFileReadContents(messages): { path: string, content: string }[] in src/agent/runner.ts that iterates assistant messages with tool_calls, finds read_file calls, and returns the content of their corresponding tool result messages prefixed with 'File: {path}'",
+        "forceSummarize builds minimal context using Stage 1: [system_prompt, ...read_file contents as user messages, finish prompt] — never passes the raw full messages array",
+        "Stage 2 token budget: estimate tokens as Math.ceil(totalContent.length / 4); if total exceeds agentMaxContextTokens * 0.7, include read_file results from most-recent to oldest until budget is filled — never truncate individual file contents, either include complete or drop",
+        "When Stage 2 budget kicks in, log: '⚠ forceSummarize: context too large even after stripping navigation (N files, ~Xk tokens). Including most recent M files within budget.'",
+        "If extractFileReadContents returns empty array, forceSummarize returns [] immediately without calling the API",
+        "Pre-flight size check in the main runSingleSession loop: before each client.chat.completions.create call, estimate messages size with Math.ceil(JSON.stringify(messages).length / 4); if it exceeds agentMaxContextTokens * 0.85, call forceSummarize proactively and return its result instead of making the API call",
+        "Typecheck passes"
+      ],
+      "priority": 41,
+      "passes": true,
+      "notes": ""
     }
   ]
 }

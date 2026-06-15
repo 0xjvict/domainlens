@@ -124,6 +124,14 @@ async function runSingleSession(
   while (iterationCount < MAX_ITERATIONS) {
     iterationCount++;
 
+    const preFlightTokens = Math.ceil(JSON.stringify(messages).length / 4);
+    if (preFlightTokens > agentMaxContextTokens * 0.85) {
+      console.log(
+        `\n⚠ Pre-flight check: estimated ${preFlightTokens.toLocaleString()} tokens exceeds limit.`
+      );
+      return await forceSummarize(client, model, systemPrompt, messages, tools, fileReads, agentMaxContextTokens);
+    }
+
     const response = await callWithRetry(() =>
       client.chat.completions.create({ model, messages, tools })
     );
@@ -193,7 +201,7 @@ async function runSingleSession(
       console.log(
         `\n⚠ Context limit exceeded (${accumulatedInputTokens.toLocaleString()} tokens). Stopping exploration.`
       );
-      return await forceSummarize(client, model, messages, tools, fileReads);
+      return await forceSummarize(client, model, systemPrompt, messages, tools, fileReads, agentMaxContextTokens);
     }
 
     if (fileReads >= agentMaxFiles) {
@@ -204,18 +212,18 @@ async function runSingleSession(
         ? (console.log('  Non-interactive environment — stopping at file limit. Increase agent_max_files in config to explore more files.'), false)
         : await promptYesNo('Continue reading? [y/N]: ');
       if (!shouldContinue) {
-        return await forceSummarize(client, model, messages, tools, fileReads);
+        return await forceSummarize(client, model, systemPrompt, messages, tools, fileReads, agentMaxContextTokens);
       }
       fileReads = 0;
     }
   }
 
-  return await forceSummarize(client, model, messages, tools, fileReads);
+  return await forceSummarize(client, model, systemPrompt, messages, tools, fileReads, agentMaxContextTokens);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`\n✗ Agent error: ${msg}`);
     console.log('  Attempting to summarize concepts discovered so far...');
-    return await forceSummarize(client, model, messages, tools, fileReads);
+    return await forceSummarize(client, model, systemPrompt, messages, tools, fileReads, agentMaxContextTokens);
   }
 }
 
@@ -241,28 +249,106 @@ async function callWithRetry<T>(
   throw new Error('unreachable');
 }
 
+interface ExtractedFile {
+  path: string;
+  content: string;
+}
+
+function extractFileReadContents(messages: OpenAI.Chat.ChatCompletionMessageParam[]): ExtractedFile[] {
+  const toolResultMap = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      const toolMsg = msg as OpenAI.Chat.ChatCompletionToolMessageParam;
+      if (typeof toolMsg.content === 'string') {
+        toolResultMap.set(toolMsg.tool_call_id, toolMsg.content);
+      }
+    }
+  }
+
+  const results: ExtractedFile[] = [];
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue;
+    const assistantMsg = msg as OpenAI.Chat.ChatCompletionAssistantMessageParam;
+    if (!assistantMsg.tool_calls) continue;
+    for (const tc of assistantMsg.tool_calls) {
+      if (tc.type !== 'function' || tc.function.name !== 'read_file') continue;
+      let args: { path?: string };
+      try {
+        args = JSON.parse(tc.function.arguments);
+      } catch {
+        continue;
+      }
+      if (!args.path) continue;
+      const content = toolResultMap.get(tc.id) || '';
+      results.push({ path: args.path, content });
+    }
+  }
+
+  return results;
+}
+
 async function forceSummarize(
   client: OpenAI,
   model: string,
+  systemPrompt: string,
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
   tools: OpenAI.Chat.ChatCompletionTool[],
-  fileReads: number
+  fileReads: number,
+  agentMaxContextTokens: number
 ): Promise<AgentConcept[]> {
   if (fileReads === 0) return [];
 
-  try {
-    const summarizeMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      ...messages,
-      {
-        role: 'user',
-        content:
-          'You have finished exploring. Now call finish() with all the domain concepts you discovered from the files you read.',
-      },
-    ];
+  const files = extractFileReadContents(messages);
+  if (files.length === 0) return [];
 
+  const systemEntry: OpenAI.Chat.ChatCompletionMessageParam = { role: 'system', content: systemPrompt };
+  const finishEntry: OpenAI.Chat.ChatCompletionMessageParam = {
+    role: 'user',
+    content: 'You have finished exploring. Now call finish() with all the domain concepts you discovered from the files you read.',
+  };
+
+  const fileEntries: OpenAI.Chat.ChatCompletionMessageParam[] = files.map((f) => ({
+    role: 'user',
+    content: `File: ${f.path}\n${f.content}`,
+  }));
+
+  let context: OpenAI.Chat.ChatCompletionMessageParam[] = [systemEntry, ...fileEntries, finishEntry];
+
+  const estimatedTokens = Math.ceil(JSON.stringify(context).length / 4);
+  if (estimatedTokens > agentMaxContextTokens * 0.7) {
+    const baseSize = Math.ceil(JSON.stringify([systemEntry, finishEntry]).length / 4);
+    const budget = Math.floor(agentMaxContextTokens * 0.7 - baseSize);
+
+    const trimmed: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    let usedTokens = 0;
+    let lastFileIndex = files.length - 1;
+
+    while (lastFileIndex >= 0) {
+      const entry: OpenAI.Chat.ChatCompletionMessageParam = {
+        role: 'user',
+        content: `File: ${files[lastFileIndex].path}\n${files[lastFileIndex].content}`,
+      };
+      const entryTokens = Math.ceil(JSON.stringify(entry).length / 4);
+      if (usedTokens + entryTokens <= budget) {
+        trimmed.push(entry);
+        usedTokens += entryTokens;
+        lastFileIndex--;
+      } else {
+        break;
+      }
+    }
+
+    trimmed.reverse();
+
+    console.log(`  ⚠ forceSummarize: context too large even after stripping navigation (${files.length} files, ~${Math.ceil(JSON.stringify(context).length / 4 / 1000)}k tokens). Including most recent ${trimmed.length} files within budget.`);
+
+    context = [systemEntry, ...trimmed, finishEntry];
+  }
+
+  try {
     const response = await client.chat.completions.create({
       model,
-      messages: summarizeMessages,
+      messages: context,
       tools,
       tool_choice: { type: 'function', function: { name: 'finish' } },
     });
