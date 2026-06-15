@@ -408,7 +408,7 @@ export function createServer(projectPath: string): McpServer {
 
       for (const section of sections) {
         if (section.startsWith('## Concept Relations')) {
-          const regex = /### (.+?)\n([\s\S]*?)(?=\n### |\n## |$)/;
+          const regex = /### (.+?)\n([\s\S]*?)(?=\n### |\n## |$)/g;
           let match;
           while ((match = regex.exec(section)) !== null) {
             const conceptName = match[1].trim();

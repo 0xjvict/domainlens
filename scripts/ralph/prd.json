@@ -560,6 +560,21 @@
       "priority": 35,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-036",
+      "title": "Fix infinite loop in get_relations MCP tool for non-first concepts",
+      "description": "As a DomainLens user querying domain relations via MCP, I want get_relations to correctly iterate over all concept sections in relations.md so that concepts listed after the first entry do not cause the MCP server to hang indefinitely.",
+      "acceptanceCriteria": [
+        "In src/mcp/server.ts inside the get_relations tool handler, add the /g flag to the regex on line 411: /### (.+?)\n([\\s\\S]*?)(?=\n### |\n## |$)/g",
+        "The while (match = regex.exec(section)) loop now correctly advances through all ### subsections instead of re-matching the first one forever",
+        "Calling get_relations for a concept that is NOT the first entry in ## Concept Relations returns the correct direct_relations list and does not hang",
+        "Calling get_relations for a concept that does not exist in relations.md returns an empty direct_relations array",
+        "Typecheck passes"
+      ],
+      "priority": 36,
+      "passes": true,
+      "notes": ""
     }
   ]
 }

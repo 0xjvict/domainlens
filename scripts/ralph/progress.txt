@@ -473,3 +473,13 @@
   - indexOf('\n## Detected Changes') searches for the newline-prefixed header, avoiding false matches in section content
   - replaceOrAppendSection returns silently if the file can't be read (graceful handling for concurrent modifications)
 ---
+
+## 2026-06-15 20:45 - US-036
+- Added missing /g flag to regex in get_relations tool handler for ## Concept Relations section
+- Without the /g flag, regex.exec() looped infinitely on the first match instead of advancing through all ### subsections
+- The same regex in ## Cross-Concept Rules already had the /g flag correctly
+- Files changed: src/mcp/server.ts
+- **Learnings for future iterations:**
+  - When using regex.exec() in a while loop, the /g flag is REQUIRED — without it, lastIndex never advances and the loop never terminates
+  - The cross-concept copy of this regex had /g, proving this was an oversight in the initial implementation
+---
