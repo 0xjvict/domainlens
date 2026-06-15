@@ -381,3 +381,15 @@
   - detectDefaultDbType reads DATABASE_URL from env to pre-fill the db_type question
   - detectCodePaths uses fs.existsSync checks — fast and deterministic
 ---
+
+## 2026-06-15 18:45 - US-028
+- Added business rules extraction (detectCandidates + extractBusinessRules + generateBusinessRulesSkills) to runDiscoverAgent
+- Added relations map generation after all skill generation steps
+- Updated file-concept-map to include business rule entries
+- Renumbered steps from 1/4–4/4 to 1/5–5/5 to accommodate business rules step
+- Files changed: src/commands/discover.ts
+- **Learnings for future iterations:**
+  - The agent pipeline previously stopped after domain/technical skills — business rules and relations are now fully integrated
+  - Step numbering (1/5) keeps output consistent with the standard pipeline
+  - Business rules extraction in agent mode follows the same pattern as standard: candidates → batch extraction → skill generation
+---

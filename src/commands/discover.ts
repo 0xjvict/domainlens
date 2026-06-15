@@ -229,13 +229,13 @@ async function runDiscoverAgent(
   config: DomainLensConfig,
   options: DiscoverOptions
 ): Promise<void> {
-  console.log('▶ Step 1/4: Extracting database schema...');
+  console.log('▶ Step 1/5: Extracting database schema...');
   const schema = await extractSchema(config, projectPath);
   if (schema) {
     console.log(`  ✓ ${schema.tables.length} tables, ${schema.enums.length} enums`);
   }
 
-  console.log('▶ Step 2/4: Agent exploring codebase...');
+  console.log('▶ Step 2/5: Agent exploring codebase...');
   const existingSkills = options.force ? [] : getExistingSkillNames(projectPath);
   const agentConcepts = await runAgent(config, projectPath, existingSkills);
   const { constants } = scanConstantsAndEnums(config, projectPath);
@@ -245,13 +245,13 @@ async function runDiscoverAgent(
     console.log(`    → Concept: "${c.concept}" (${c.signals.length} signals)`);
   }
 
-  console.log('▶ Step 3/4: Extracting documentation...');
+  console.log('▶ Step 3/5: Extracting documentation...');
   const { sections, sqlBlocks, adrs } = extractDocs(config, projectPath);
   console.log(
     `  ✓ ${sections.length} sections, ${sqlBlocks.length} SQL blocks, ${adrs.length} ADRs`
   );
 
-  console.log('▶ Step 4/4: Generating skills...');
+  console.log('▶ Step 4/5: Generating skills...');
   const domainResult = await generateDomainSkills(concepts, config, projectPath, {
     dryRun: options.dryRun,
     force: options.force,
@@ -263,6 +263,39 @@ async function runDiscoverAgent(
     force: options.force,
     noEnrich: options.noEnrich,
   });
+
+  console.log('▶ Step 5/5: Extracting business rules...');
+  const candidates = detectCandidates(config, projectPath);
+  let businessRules: BusinessRule[] = [];
+  if (candidates.length > 0) {
+    console.log(`  ✓ ${candidates.length} candidate files detected`);
+    const batchSize = config.rules_batch_size ?? 10;
+    businessRules = await extractBusinessRules(candidates, config, batchSize);
+    if (businessRules.length > 0) {
+      console.log(`  ✓ ${businessRules.length} business rules extracted`);
+      const bizResult = await generateBusinessRulesSkills(businessRules, config, projectPath, {
+        dryRun: options.dryRun,
+        force: options.force,
+        noEnrich: options.noEnrich,
+      });
+      rulesResult.created += bizResult.created;
+      rulesResult.updated += bizResult.updated;
+      rulesResult.enriched += bizResult.enriched;
+    } else {
+      console.log('  No business rules extracted');
+    }
+  } else {
+    console.log('  No candidate files found in rules_paths');
+  }
+
+  console.log('▶ Synthesizing relations map...');
+  const relationsGenerated = await generateRelationsMap(projectPath, {
+    dryRun: options.dryRun,
+    force: options.force,
+  });
+  if (relationsGenerated) {
+    console.log('  ✓ relations.md updated');
+  }
 
   const totalCreated = domainResult.created + rulesResult.created;
   const totalUpdated = domainResult.updated + rulesResult.updated;
@@ -280,6 +313,12 @@ async function runDiscoverAgent(
         if (!fileEntries[sig.source]) fileEntries[sig.source] = { concepts: [] };
         fileEntries[sig.source].concepts.push({ name: c.concept, type: 'domain' });
       }
+    }
+  }
+  for (const rule of businessRules) {
+    for (const file of rule.enforced_in) {
+      if (!fileEntries[file]) fileEntries[file] = { concepts: [] };
+      fileEntries[file].concepts.push({ name: rule.name, type: 'business_rule' });
     }
   }
   updateFileConceptMap(projectPath, fileEntries);

@@ -454,7 +454,7 @@
         "Typecheck passes"
       ],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -498,6 +498,20 @@
         "Typecheck passes"
       ],
       "priority": 31,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "Fix getExistingSkillNames to read frontmatter name: instead of filename",
+      "description": "As a DomainLens user running discover --agent on a project with existing skills, I want the agent's existing skill list to use the frontmatter name: field as the source of truth, so that after filenames are standardized to snake_case (US-022) the agent still recognizes already-documented concepts and avoids rediscovering them as duplicates.",
+      "acceptanceCriteria": [
+        "getExistingSkillNames in src/commands/discover.ts extracts the name: field from frontmatter when available, falling back to filename-without-extension if the field is absent",
+        "getExistingDomainAndRuleNames applies the same frontmatter-first logic",
+        "Both functions already read file content to check type: — the name: extraction reuses the same frontmatter parse without an extra fs.readFileSync call",
+        "Typecheck passes"
+      ],
+      "priority": 32,
       "passes": false,
       "notes": ""
     }
