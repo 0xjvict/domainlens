@@ -5,7 +5,7 @@ import type { DomainLensConfig } from '../types.js';
 import type { Signal } from '../inferrer/heuristics.js';
 import { readFileConceptMap } from '../utils/fileConceptMap.js';
 import { parseFrontmatter, parseTags } from '../utils/frontmatter.js';
-import { enrichDomainConcept, enrichBusinessRule, hasLlmKey } from '../llm/openrouter.js';
+import { enrichDomainConcept, enrichBusinessRule, hasLlmKey } from '../llm/client.js';
 import { generateRelationsMap } from '../skills/relationsSkills.js';
 
 interface ChangedFile {

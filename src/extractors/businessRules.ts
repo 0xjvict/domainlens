@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import OpenAI from 'openai';
 import type { DomainLensConfig, BusinessRule } from '../types.js';
+import { makeClient } from '../llm/client.js';
 
 const BUSINESS_KEYWORDS = [
   'must', 'should', 'valid', 'invalid', 'approve', 'reject',
@@ -136,13 +136,13 @@ export async function extractBusinessRules(
   batchSize: number = 5
 ): Promise<BusinessRule[]> {
   const apiKey = process.env[config.llm_key_env];
-  if (!apiKey || candidates.length === 0) return [];
+  if ((!apiKey && !config.llm_base_url) || candidates.length === 0) return [];
 
   const allRules: BusinessRule[] = [];
 
   for (let i = 0; i < candidates.length; i += batchSize) {
     const batch = candidates.slice(i, i + batchSize);
-    const batchRules = await extractBatch(batch, config, apiKey);
+    const batchRules = await extractBatch(batch, config);
     allRules.push(...batchRules);
   }
 
@@ -151,8 +151,7 @@ export async function extractBusinessRules(
 
 async function extractBatch(
   batch: BusinessRuleCandidate[],
-  config: DomainLensConfig,
-  apiKey: string
+  config: DomainLensConfig
 ): Promise<BusinessRule[]> {
   const fileSummaries = batch
     .map((c) => {
@@ -174,10 +173,7 @@ async function extractBatch(
       };
     });
 
-  const client = new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey,
-  });
+  const client = makeClient(config);
 
   const prompt = `You are a business analyst extracting business rules from source code.
 

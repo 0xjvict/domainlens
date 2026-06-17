@@ -4,6 +4,7 @@ export interface DomainLensConfig {
   db_url_env: string;
   db_type?: DbType;
   llm_key_env: string;
+  llm_base_url?: string;
   llm_model: string;
   explorer_model?: string;
   agent_max_files?: number;

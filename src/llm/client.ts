@@ -7,13 +7,13 @@ import type { Signal } from '../inferrer/heuristics.js';
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
 export function hasLlmKey(config: DomainLensConfig): boolean {
-  return Boolean(process.env[config.llm_key_env]);
+  return Boolean(process.env[config.llm_key_env]) || Boolean(config.llm_base_url);
 }
 
-function makeClient(config: DomainLensConfig): OpenAI {
+export function makeClient(config: DomainLensConfig): OpenAI {
   return new OpenAI({
-    baseURL: OPENROUTER_BASE,
-    apiKey: process.env[config.llm_key_env]!,
+    baseURL: config.llm_base_url ?? OPENROUTER_BASE,
+    apiKey: process.env[config.llm_key_env] ?? 'no-key',
   });
 }
 
@@ -58,8 +58,7 @@ export async function enrichDomainConcept(
   config: DomainLensConfig,
   projectPath: string = process.cwd()
 ): Promise<DomainEnrichResult | null> {
-  const apiKey = process.env[config.llm_key_env];
-  if (!apiKey) return null;
+  if (!hasLlmKey(config)) return null;
 
   const projectContext = getProjectContext(config, projectPath);
   const signalSummary = signals
@@ -128,8 +127,7 @@ export async function enrichBusinessRule(
   config: DomainLensConfig,
   projectPath: string = process.cwd()
 ): Promise<string | null> {
-  const apiKey = process.env[config.llm_key_env];
-  if (!apiKey) return null;
+  if (!hasLlmKey(config)) return null;
 
   const projectContext = getProjectContext(config, projectPath);
   const client = makeClient(config);

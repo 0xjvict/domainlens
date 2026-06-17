@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { DomainLensConfig } from '../types.js';
 import type { DomainConcept, Signal } from '../inferrer/heuristics.js';
-import { enrichDomainConcept, hasLlmKey } from '../llm/openrouter.js';
+import { enrichDomainConcept, hasLlmKey } from '../llm/client.js';
 import { toSkillFilename } from '../utils/filename.js';
 
 export interface SkillGenOptions {

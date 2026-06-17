@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { DomainLensConfig, BusinessRule } from '../types.js';
-import { enrichBusinessRule, hasLlmKey } from '../llm/openrouter.js';
+import { enrichBusinessRule, hasLlmKey } from '../llm/client.js';
 import type { SkillGenOptions, SkillGenResult } from './domainSkills.js';
 import { toSkillFilename } from '../utils/filename.js';
 

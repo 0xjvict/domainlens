@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { DomainLensConfig, SchemaCache } from '../types.js';
 import type { Signal } from '../inferrer/heuristics.js';
 import type { Constant } from '../extractors/codeScanner.js';
-import { enrichDomainConcept, hasLlmKey } from '../llm/openrouter.js';
+import { enrichDomainConcept, hasLlmKey } from '../llm/client.js';
 import type { SkillGenOptions, SkillGenResult } from './domainSkills.js';
 
 interface RuleSpec {

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import OpenAI from 'openai';
 import type { DomainLensConfig, SchemaCache } from '../types.js';
 import type { Signal, SignalType } from '../inferrer/heuristics.js';
 import { buildSchemaSummary } from '../utils/schemaSummary.js';
+import { makeClient, hasLlmKey } from './client.js';
 
 export interface MergedConcept {
   concept: string;
@@ -20,17 +20,13 @@ interface PreScanInput {
 }
 
 export async function preScanConcepts(input: PreScanInput): Promise<string[]> {
-  const apiKey = process.env[input.config.llm_key_env];
-  if (!apiKey) return [];
+  if (!hasLlmKey(input.config)) return [];
 
   const fileTree = buildFileTree(input.projectPath, input.config.code_paths, input.config.ignore);
   const schemaSummary = buildSchemaSummary(input.schema);
   const existingConcepts = input.existingConceptNames.join(', ') || '(none)';
 
-  const client = new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey,
-  });
+  const client = makeClient(input.config);
 
   const prompt = `You are a domain analyst reviewing a software project.
 

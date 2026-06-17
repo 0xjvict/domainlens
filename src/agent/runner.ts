@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as readline from 'node:readline';
 import OpenAI from 'openai';
+import { makeClient } from '../llm/client.js';
 import type { DomainLensConfig, AgentConcept, Signal, SchemaCache } from '../types.js';
 import { buildSchemaSummary } from '../utils/schemaSummary.js';
 import { getToolDefinitions, createToolHandlers } from './tools.js';
@@ -19,7 +20,7 @@ export async function runAgent(
   _options: RunAgentOptions = {}
 ): Promise<AgentConcept[]> {
   const apiKey = process.env[config.llm_key_env];
-  if (!apiKey) {
+  if (!apiKey && !config.llm_base_url) {
     throw new Error(`LLM key not found in environment variable "${config.llm_key_env}"`);
   }
 
@@ -89,7 +90,6 @@ async function runSingleSession(
   existingSkills: string[],
   _options: RunAgentOptions = {}
 ): Promise<AgentConcept[]> {
-  const apiKey = process.env[config.llm_key_env];
   const model = config.explorer_model ?? config.llm_model;
   const agentMaxFiles = config.agent_max_files ?? 150;
   const agentMaxContextTokens = config.agent_max_context_tokens ?? 100000;
@@ -97,10 +97,7 @@ async function runSingleSession(
 
   const MIN_FILE_READS = fileFilter ? Math.min(5, fileFilter.length) : 5;
 
-  const client = new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey,
-  });
+  const client = makeClient(config);
 
   const schema = loadSchemaCache(projectPath);
   const schemaSummary = fileFilter ? null : buildSchemaSummary(schema);
