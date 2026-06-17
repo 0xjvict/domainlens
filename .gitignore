@@ -24,3 +24,4 @@ npm-debug.log*
 /scripts
 PRD.md
 .claude
+COMMIT_CONVENTIONS.md
