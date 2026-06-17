@@ -36,7 +36,7 @@ Your project
 ```
 
 1. **Extract** — deterministic scripts pull signals from your schema, code, and docs. No LLM hallucination of structure.
-2. **Enrich** — an LLM (via OpenRouter) fills in business definitions based on detected signals.
+2. **Enrich** — an LLM fills in business definitions based on detected signals. Works with OpenRouter, any OpenAI-compatible endpoint, or no LLM at all (`--no-enrich`).
 3. **Index** — embeddings are built locally with `all-MiniLM-L6-v2` and stored in SQLite.
 4. **Serve** — an MCP stdio server exposes four tools agents can query at any time.
 
@@ -51,11 +51,11 @@ cd your-project
 domainlens init
 ```
 
-Set your database URL:
+Set your database URL and LLM key (optional — for enrichment):
 
 ```bash
 export DATABASE_URL="postgresql://user:pass@localhost:5432/mydb"
-export OPENROUTER_API_KEY="sk-or-..."   # optional — for LLM enrichment
+export OPENROUTER_API_KEY="sk-or-..."   # or any key name you configure in llm_key_env
 ```
 
 Run discovery:
@@ -82,6 +82,9 @@ Once the server is running, agents have access to four tools:
 | `search_semantic` | Vector similarity search across skills, schema, SQL examples, and constants. Returns ranked excerpts. |
 | `list_skills` | Lists all domain skills with metadata. Filter by `type` (`domain` \| `rules`). |
 | `get_skill` | Returns the full content of a named skill file. |
+| `get_concept` | Returns structured data for a domain concept: frontmatter, definition, states, business rules, and related concepts. |
+| `get_relations` | Returns direct relations and cross-concept rules for a given concept from the knowledge map. |
+| `get_rules_for_concept` | Finds all business rules that reference a given domain concept. |
 
 Example agent interaction:
 
@@ -132,11 +135,16 @@ Change `source` to `human` after you review a skill.
 | Command | Description |
 |---------|-------------|
 | `domainlens init` | Initialize `.domainlens/` config and directory structure |
+| `domainlens init --yes` | Skip setup wizard and use defaults (non-interactive) |
 | `domainlens discover` | Run full extraction and skill generation pipeline |
+| `domainlens discover --agent` | Use AI agent to discover domain concepts (replaces scanner + heuristics) |
 | `domainlens discover --embeddings` | Also build the semantic search index |
 | `domainlens discover --no-enrich` | Skip LLM enrichment, write skeletons only |
 | `domainlens discover --dry-run` | Preview what would be written without touching files |
 | `domainlens discover --force` | Regenerate all skills from scratch |
+| `domainlens discover --relations-only` | Regenerate `relations.md` from existing skills without re-running extraction |
+| `domainlens watch` | Watch for file changes and incrementally update skills |
+| `domainlens watch --no-enrich` | Watch mode without LLM enrichment |
 | `domainlens start` | Start the MCP stdio server |
 | `domainlens start --project <path>` | Start the server for a specific project path |
 | `domainlens status` | Show project statistics (skills, schema, embeddings) |
@@ -163,8 +171,13 @@ Change `source` to `human` after you review a skill.
 ```
 
 - **`db_url_env`** — name of the env var holding your database connection string. The URL itself never goes in this file.
-- **`llm_model`** — any model available on OpenRouter. Swap without code changes.
+- **`llm_key_env`** — name of the env var holding your LLM API key.
+- **`llm_model`** — model identifier passed to the LLM. Any model supported by the endpoint.
+- **`llm_base_url`** — *(optional)* base URL for an OpenAI-compatible endpoint. Defaults to OpenRouter (`https://openrouter.ai/api/v1`). Set this to use a self-hosted model or another provider.
+- **`explorer_model`** — *(optional)* separate model for the `--agent` discovery pass. Falls back to `llm_model` if not set.
 - **`code_paths`** — directories scanned for SQL strings, constants, enums, and ORM models.
+- **`watch_interval_seconds`** — *(optional)* polling interval for `domainlens watch`. Defaults to 10 seconds.
+- **`agent_strategy`** — *(optional)* `"single"` or `"multi"`. Controls whether `--agent` uses one session or parallel sub-sessions. Defaults to `"single"`.
 
 ### What gets committed to git
 

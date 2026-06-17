@@ -36,7 +36,7 @@ Seu projeto
 ```
 
 1. **Extrai** — scripts determinísticos coletam sinais do schema, código e docs. Sem alucinação de estrutura por LLM.
-2. **Enriquece** — um LLM (via OpenRouter) preenche definições de negócio com base nos sinais detectados.
+2. **Enriquece** — um LLM preenche definições de negócio com base nos sinais detectados. Funciona com OpenRouter, qualquer endpoint compatível com OpenAI, ou sem LLM nenhum (`--no-enrich`).
 3. **Indexa** — embeddings são gerados localmente com `all-MiniLM-L6-v2` e armazenados em SQLite.
 4. **Serve** — um servidor MCP stdio expõe quatro ferramentas que os agentes podem consultar a qualquer momento.
 
@@ -51,11 +51,11 @@ cd seu-projeto
 domainlens init
 ```
 
-Configure suas credenciais:
+Configure suas credenciais (LLM é opcional — para enriquecimento):
 
 ```bash
 export DATABASE_URL="postgresql://usuario:senha@localhost:5432/meudb"
-export OPENROUTER_API_KEY="sk-or-..."   # opcional — para enriquecimento via LLM
+export OPENROUTER_API_KEY="sk-or-..."   # ou qualquer nome configurado em llm_key_env
 ```
 
 Execute a descoberta:
@@ -82,6 +82,9 @@ Com o servidor rodando, os agentes têm acesso a quatro ferramentas:
 | `search_semantic` | Busca vetorial por similaridade em skills, schema, exemplos SQL e constantes. Retorna excerpts ranqueados. |
 | `list_skills` | Lista todas as skills de domínio com metadados. Filtra por `type` (`domain` \| `rules`). |
 | `get_skill` | Retorna o conteúdo completo de uma skill pelo nome. |
+| `get_concept` | Retorna dados estruturados de um conceito de domínio: frontmatter, definição, estados, regras de negócio e conceitos relacionados. |
+| `get_relations` | Retorna relações diretas e regras entre conceitos para um dado conceito do mapa de conhecimento. |
+| `get_rules_for_concept` | Encontra todas as regras de negócio que referenciam um dado conceito de domínio. |
 
 Exemplo de interação com o agente:
 
@@ -132,11 +135,16 @@ Altere `source` para `human` após revisar uma skill.
 | Comando | Descrição |
 |---------|-----------|
 | `domainlens init` | Inicializa a estrutura `.domainlens/` e o arquivo de configuração |
+| `domainlens init --yes` | Pula o wizard e usa os valores padrão (não-interativo) |
 | `domainlens discover` | Executa o pipeline completo de extração e geração de skills |
+| `domainlens discover --agent` | Usa agente de IA para descobrir conceitos de domínio (substitui scanner + heurísticas) |
 | `domainlens discover --embeddings` | Também constrói o índice de busca semântica |
 | `domainlens discover --no-enrich` | Pula o enriquecimento LLM, gera apenas skeletons |
 | `domainlens discover --dry-run` | Pré-visualiza o que seria escrito sem tocar nos arquivos |
 | `domainlens discover --force` | Regenera todas as skills do zero |
+| `domainlens discover --relations-only` | Regenera `relations.md` a partir das skills existentes sem re-executar a extração |
+| `domainlens watch` | Monitora mudanças de arquivos e atualiza skills incrementalmente |
+| `domainlens watch --no-enrich` | Modo watch sem enriquecimento LLM |
 | `domainlens start` | Inicia o servidor MCP stdio |
 | `domainlens start --project <path>` | Inicia o servidor para um projeto específico |
 | `domainlens status` | Exibe estatísticas do projeto (skills, schema, embeddings) |
@@ -163,8 +171,13 @@ O `domainlens init` gera `.domainlens/config.json`:
 ```
 
 - **`db_url_env`** — nome da variável de ambiente com a connection string do banco. A URL nunca fica neste arquivo.
-- **`llm_model`** — qualquer modelo disponível no OpenRouter. Troque sem alterar código.
+- **`llm_key_env`** — nome da variável de ambiente com a chave de API do LLM.
+- **`llm_model`** — identificador do modelo passado ao LLM. Qualquer modelo suportado pelo endpoint.
+- **`llm_base_url`** — *(opcional)* URL base de um endpoint compatível com OpenAI. Padrão: OpenRouter (`https://openrouter.ai/api/v1`). Use para modelos self-hosted ou outros providers.
+- **`explorer_model`** — *(opcional)* modelo separado para o passo de descoberta com `--agent`. Usa `llm_model` se não configurado.
 - **`code_paths`** — diretórios escaneados para SQL, constantes, enums e modelos ORM.
+- **`watch_interval_seconds`** — *(opcional)* intervalo de polling para `domainlens watch`. Padrão: 10 segundos.
+- **`agent_strategy`** — *(opcional)* `"single"` ou `"multi"`. Controla se `--agent` usa uma sessão ou sub-sessões paralelas. Padrão: `"single"`.
 
 ### O que vai para o git
 
